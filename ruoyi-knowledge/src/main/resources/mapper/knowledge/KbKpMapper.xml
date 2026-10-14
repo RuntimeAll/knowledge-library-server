@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN'
+  'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbKpMapper">
+    <resultMap id="result" type="com.ruoyi.knowledge.domain.KbKp">
+        <result property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="gradeHint" column="grade_hint"/>
+        <result property="rowVersion" column="row_version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+    <select id="selectById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id}</select>
+    <select id="lockById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id} FOR UPDATE</select>
+    <select id="selectList" resultMap="result">
+        SELECT * FROM kb_kp
+        <where>
+            <if test="name != null and name != ''">AND name LIKE CONCAT('%', #{name}, '%')</if>
+        </where>
+         ORDER BY id DESC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_kp (name,description,grade_hint,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{name},#{description},#{gradeHint},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_kp SET name=#{name},description=#{description},grade_hint=#{gradeHint},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <delete id="deleteById">DELETE FROM kb_kp WHERE id=#{id}</delete>
+    <select id="lockGraph" resultMap="result">SELECT * FROM kb_kp ORDER BY id FOR UPDATE</select>
+    <select id="selectEdges" resultType="com.ruoyi.knowledge.domain.KbKpEdge">SELECT from_kp_id AS fromKpId,to_kp_id AS toKpId,kind FROM kb_kp_edge</select>
+    <select id="selectQuestionPoints" resultType="com.ruoyi.knowledge.domain.KbQuestionKp">SELECT question_id AS questionId,kp_id AS kpId FROM kb_question_kp</select>
+    <delete id="deleteEdges">DELETE FROM kb_kp_edge WHERE from_kp_id=#{id}</delete>
+    <insert id="insertEdge">INSERT INTO kb_kp_edge(from_kp_id,to_kp_id,kind) VALUES(#{fromKpId},#{toKpId},#{kind})</insert>
+    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_kp_edge WHERE to_kp_id=#{id})+(SELECT COUNT(*) FROM kb_question_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_outline_node_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_material WHERE kp_id=#{id})</select>
+</mapper>

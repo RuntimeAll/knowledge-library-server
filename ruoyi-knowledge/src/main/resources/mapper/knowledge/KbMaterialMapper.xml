@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN'
+  'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbMaterialMapper">
+    <resultMap id="result" type="com.ruoyi.knowledge.domain.KbMaterial">
+        <result property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="description" column="description"/>
+        <result property="kpId" column="kp_id"/>
+        <result property="selectionMode" column="selection_mode"/>
+        <result property="questionCount" column="question_count"/>
+        <result property="rowVersion" column="row_version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+    <select id="selectById" resultMap="result">SELECT * FROM kb_material WHERE id=#{id}</select>
+    <select id="lockById" resultMap="result">SELECT * FROM kb_material WHERE id=#{id} FOR UPDATE</select>
+    <select id="selectList" resultMap="result">
+        SELECT m.*, (SELECT COUNT(*) FROM kb_material_item i WHERE i.material_id=m.id) AS question_count
+        FROM kb_material m
+        <where>
+            <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
+        </where>
+         ORDER BY id DESC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_material (title,description,kp_id,selection_mode,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{description},#{kpId},#{selectionMode},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_material SET title=#{title},description=#{description},kp_id=#{kpId},selection_mode=#{selectionMode},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <delete id="deleteById">DELETE FROM kb_material WHERE id=#{id}</delete>
+    <select id="selectQuestionIds" resultType="long">SELECT question_id FROM kb_material_item WHERE material_id=#{id} ORDER BY seq</select>
+    <select id="selectReferences" resultType="com.ruoyi.knowledge.domain.KbMaterialReference">SELECT r.source_id AS sourceId,r.note,s.title AS sourceTitle,s.extraction_status AS extractionStatus FROM kb_material_reference_source r JOIN kb_source s ON s.id=r.source_id WHERE r.material_id=#{id} ORDER BY r.source_id</select>
+    <delete id="deleteItems">DELETE FROM kb_material_item WHERE material_id=#{id}</delete>
+    <delete id="deleteReferences">DELETE FROM kb_material_reference_source WHERE material_id=#{id}</delete>
+    <insert id="insertItem">INSERT INTO kb_material_item(material_id,question_id,seq) VALUES(#{id},#{questionId},#{seq})</insert>
+    <insert id="insertReference">INSERT INTO kb_material_reference_source(material_id,source_id,note) VALUES(#{id},#{ref.sourceId},#{ref.note})</insert>
+    <select id="countProducts" resultType="long">SELECT COUNT(*) FROM kb_product WHERE material_id=#{id}</select>
+    <select id="realInSources" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
+        JOIN kb_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
+        WHERE q.id=#{questionId} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash AND qs.source_id IN
+        <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
+        )
+    </select>
+    <select id="selectVerifiedOccurrenceIdForUpdate" resultType="long">
+        SELECT qs.id FROM kb_question_source qs
+        JOIN kb_source s ON s.id=qs.source_id
+        JOIN kb_exam_source e ON e.source_id=qs.source_id
+        JOIN kb_question q ON q.id=qs.question_id
+        WHERE q.id=#{questionId} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash
+        AND qs.source_id IN
+        <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
+        ORDER BY qs.id LIMIT 1 FOR UPDATE
+    </select>
+    <!-- null means all sources; an explicit empty reference range always matches nothing. -->
+    <sql id="comparisonSourceFilter">
+        <if test="sourceIds != null">
+            <choose>
+                <when test="sourceIds.size() &gt; 0">
+                    AND s.id IN
+                    <foreach collection="sourceIds" item="sourceId" open="(" close=")" separator=",">#{sourceId}</foreach>
+                </when>
+                <otherwise>AND 1=0</otherwise>
+            </choose>
+        </if>
+    </sql>
+    <sql id="comparisonFacts">
+        <choose>
+            <when test="pointMatches != null and pointMatches.size() &gt; 0">
+                <foreach collection="pointMatches" item="point" separator=" UNION ALL ">
+                    SELECT s.id AS sourceId, s.title AS sourceTitle,
+                           q.id AS questionId, q.title AS questionTitle,
+                           qs.question_no AS questionNo, qs.page_from AS pageFrom, qs.page_to AS pageTo,
+                           #{point.kpId} AS kpId, #{point.kpName} AS kpName
+                    FROM kb_question_source qs
+                    JOIN kb_source s ON s.id=qs.source_id
+                    JOIN kb_exam_source e ON e.source_id=s.id
+                    JOIN kb_question q ON q.id=qs.question_id
+                    WHERE s.source_kind='EXAM' AND s.extraction_status != 'ORIGINAL_ONLY'
+                      AND e.authenticity_status='VERIFIED' AND qs.match_status='VERIFIED'
+                      AND qs.matched_stem_hash=q.stem_hash
+                      AND q.id IN
+                    <foreach collection="point.questionIds" item="questionId" open="(" close=")" separator=",">#{questionId}</foreach>
+                    <include refid="comparisonSourceFilter"/>
+                </foreach>
+            </when>
+            <otherwise>
+                SELECT NULL AS sourceId, NULL AS sourceTitle, NULL AS questionId,
+                       NULL AS questionTitle, NULL AS questionNo, NULL AS pageFrom,
+                       NULL AS pageTo, NULL AS kpId, NULL AS kpName WHERE 1=0
+            </otherwise>
+        </choose>
+    </sql>
+    <select id="selectComparisonMatches" resultType="com.ruoyi.knowledge.domain.KbComparisonRow">
+        SELECT * FROM (
+        <include refid="comparisonFacts"/>
+        ) facts
+        ORDER BY sourceId, questionId, kpId, pageFrom, questionNo LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countComparisonMatches" resultType="long">
+        SELECT COUNT(*) FROM (
+        <include refid="comparisonFacts"/>
+        ) facts
+    </select>
+    <select id="selectComparisonCoverage" resultType="com.ruoyi.knowledge.domain.KbComparisonRow">
+        SELECT s.id AS sourceId, s.title AS sourceTitle, s.extraction_status AS extractionStatus,
+            CASE
+                WHEN s.extraction_status='ORIGINAL_ONLY' THEN 'ORIGINAL_ONLY'
+                WHEN s.source_kind != 'EXAM' THEN 'NOT_EXAM'
+                WHEN e.authenticity_status IS NULL OR e.authenticity_status != 'VERIFIED' THEN 'SOURCE_UNVERIFIED'
+        <if test="pointIds == null or pointIds.size() == 0">WHEN 1=1 THEN 'NO_KNOWLEDGE_POINTS'</if>
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM kb_question_source qs JOIN kb_question q ON q.id=qs.question_id
+                    WHERE qs.source_id=s.id AND qs.match_status='VERIFIED'
+                    AND qs.matched_stem_hash=q.stem_hash
+                ) THEN 'NO_VERIFIED_QUESTIONS'
+                WHEN s.extraction_status='PARTIAL' THEN 'COMPARED_PARTIAL'
+                ELSE 'COMPARED_EXTRACTED'
+            END AS comparisonStatus
+        FROM kb_source s LEFT JOIN kb_exam_source e ON e.source_id=s.id
+        WHERE 1=1
+        <include refid="comparisonSourceFilter"/>
+        ORDER BY s.id LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countComparisonCoverage" resultType="long">
+        SELECT COUNT(*) FROM kb_source s WHERE 1=1
+        <include refid="comparisonSourceFilter"/>
+    </select>
+    <select id="selectComparisonPoints" resultType="com.ruoyi.knowledge.domain.KbKp">
+        SELECT id, name, description FROM kb_kp WHERE
+        <choose>
+            <when test="pointIds != null and pointIds.size() &gt; 0">
+                id IN
+                <foreach collection="pointIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+            </when>
+            <otherwise>1=0</otherwise>
+        </choose>
+        ORDER BY id LIMIT #{limit} OFFSET #{offset}
+    </select>
+</mapper>

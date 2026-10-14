@@ -16,6 +16,11 @@
     </description>
 
     <dependencies>
+        <dependency>
+            <groupId>com.ruoyi</groupId>
+            <artifactId>ruoyi-knowledge</artifactId>
+            <version>${ruoyi.version}</version>
+        </dependency>
 
         <!-- spring-boot-devtools -->
         <dependency>

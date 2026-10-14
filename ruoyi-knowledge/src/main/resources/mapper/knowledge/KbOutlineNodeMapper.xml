@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN'
+  'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbOutlineNodeMapper">
+    <resultMap id="result" type="com.ruoyi.knowledge.domain.KbOutlineNode">
+        <result property="id" column="id"/>
+        <result property="outlineId" column="outline_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="title" column="title"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="rowVersion" column="row_version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+    <select id="selectById" resultMap="result">SELECT * FROM kb_outline_node WHERE id=#{id}</select>
+    <select id="lockById" resultMap="result">SELECT * FROM kb_outline_node WHERE id=#{id} FOR UPDATE</select>
+    <select id="selectList" resultMap="result">
+        SELECT * FROM kb_outline_node
+        <where>
+            <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
+            <if test="outlineId != null">AND outline_id=#{outlineId}</if>
+        </where>
+         ORDER BY sort_order,id
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_outline_node (outline_id,parent_id,title,sort_order,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{outlineId},#{parentId},#{title},#{sortOrder},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_outline_node SET outline_id=#{outlineId},parent_id=#{parentId},title=#{title},sort_order=#{sortOrder},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <delete id="deleteById">DELETE FROM kb_outline_node WHERE id=#{id}</delete>
+    <select id="selectKpIds" resultType="long">SELECT kp_id FROM kb_outline_node_kp WHERE node_id=#{id}</select>
+    <delete id="deleteKps">DELETE FROM kb_outline_node_kp WHERE node_id=#{id}</delete>
+    <insert id="insertKp">INSERT INTO kb_outline_node_kp(node_id,kp_id) VALUES(#{id},#{kpId})</insert>
+    <select id="countChildren" resultType="long">SELECT COUNT(*) FROM kb_outline_node WHERE parent_id=#{id}</select>
+</mapper>

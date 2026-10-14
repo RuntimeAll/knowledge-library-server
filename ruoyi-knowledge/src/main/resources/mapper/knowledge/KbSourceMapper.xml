@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN'
+  'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbSourceMapper">
+    <resultMap id="result" type="com.ruoyi.knowledge.domain.KbSource">
+        <result property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="sourceKind" column="source_kind"/>
+        <result property="extractionStatus" column="extraction_status"/>
+        <result property="originUrl" column="origin_url"/>
+        <result property="originNote" column="origin_note"/>
+        <result property="authenticityStatus" column="authenticity_status"/>
+        <result property="rowVersion" column="row_version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+    <select id="selectById" resultMap="result">SELECT * FROM kb_source WHERE id=#{id}</select>
+    <select id="lockById" resultMap="result">SELECT * FROM kb_source WHERE id=#{id} FOR UPDATE</select>
+    <select id="selectList" resultMap="result">
+        SELECT s.*, e.authenticity_status FROM kb_source s
+        LEFT JOIN kb_exam_source e ON e.source_id=s.id AND s.source_kind='EXAM'
+        <where>
+            <if test="title != null and title != ''">AND s.title LIKE CONCAT('%', #{title}, '%')</if>
+            <if test="sourceKind != null and sourceKind != ''">AND s.source_kind=#{sourceKind}</if>
+            <if test="extractionStatus != null and extractionStatus != ''">AND s.extraction_status=#{extractionStatus}</if>
+            <if test="authenticityStatus != null and authenticityStatus != ''">AND e.authenticity_status=#{authenticityStatus}</if>
+        </where>
+         ORDER BY s.id DESC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_source (title,source_kind,extraction_status,origin_url,origin_note,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{sourceKind},#{extractionStatus},#{originUrl},#{originNote},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_source SET title=#{title},source_kind=#{sourceKind},extraction_status=#{extractionStatus},origin_url=#{originUrl},origin_note=#{originNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <delete id="deleteById">DELETE FROM kb_source WHERE id=#{id}</delete>
+    <resultMap id="exam" type="com.ruoyi.knowledge.domain.KbSource">
+        <result property="subject" column="subject"/>
+        <result property="grade" column="grade"/>
+        <result property="examType" column="exam_type"/>
+        <result property="examYear" column="exam_year"/>
+        <result property="schoolName" column="school_name"/>
+        <result property="scopeNote" column="scope_note"/>
+        <result property="authenticityStatus" column="authenticity_status"/>
+        <result property="verificationNote" column="verification_note"/>
+    </resultMap>
+    <select id="selectExam" resultMap="exam">SELECT * FROM kb_exam_source WHERE source_id=#{id}</select>
+    <insert id="saveExam">INSERT INTO kb_exam_source(source_id,subject,grade,exam_type,exam_year,school_name,scope_note,authenticity_status,verification_note) VALUES(#{id},#{subject},#{grade},#{examType},#{examYear},#{schoolName},#{scopeNote},#{authenticityStatus},#{verificationNote}) ON DUPLICATE KEY UPDATE subject=VALUES(subject),grade=VALUES(grade),exam_type=VALUES(exam_type),exam_year=VALUES(exam_year),school_name=VALUES(school_name),scope_note=VALUES(scope_note),authenticity_status=VALUES(authenticity_status),verification_note=VALUES(verification_note)</insert>
+    <delete id="deleteExam">DELETE FROM kb_exam_source WHERE source_id=#{id}</delete>
+    <select id="selectAttachments" resultType="com.ruoyi.knowledge.domain.KbSourceAttachment">SELECT source_id AS sourceId,asset_id AS assetId,role FROM kb_source_asset WHERE source_id=#{id} ORDER BY asset_id,role</select>
+    <insert id="insertAttachment">INSERT INTO kb_source_asset(source_id,asset_id,role) VALUES(#{sourceId},#{assetId},#{role})</insert>
+    <delete id="deleteAttachments">DELETE FROM kb_source_asset WHERE source_id=#{id}</delete>
+    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_question_source WHERE source_id=#{id})+(SELECT COUNT(*) FROM kb_material_reference_source WHERE source_id=#{id})</select>
+    <select id="countOccurrences" resultType="long">SELECT COUNT(*) FROM kb_question_source WHERE source_id=#{id}</select>
+    <select id="countAssetEvidence" resultType="long">SELECT COUNT(*) FROM kb_question_source WHERE source_id=#{sourceId} AND evidence_asset_id=#{assetId}</select>
+    <update id="advanceExtraction">
+        UPDATE kb_source SET extraction_status='PARTIAL',row_version=row_version+1,
+            update_by=#{actor},update_time=NOW()
+        WHERE id=#{id} AND extraction_status='ORIGINAL_ONLY'
+    </update>
+</mapper>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN'
+  'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbQuestionMapper">
+    <resultMap id="result" type="com.ruoyi.knowledge.domain.KbQuestion">
+        <result property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="stemHtml" column="stem_html"/>
+        <result property="answerHtml" column="answer_html"/>
+        <result property="analysisHtml" column="analysis_html"/>
+        <result property="stemText" column="stem_text"/>
+        <result property="stemHash" column="stem_hash"/>
+        <result property="hasImage" column="has_image"/>
+        <result property="status" column="status"/>
+        <result property="subject" column="subject"/>
+        <result property="questionType" column="question_type"/>
+        <result property="difficulty" column="difficulty"/>
+        <result property="creationKind" column="creation_kind"/>
+        <result property="sourceNote" column="source_note"/>
+        <result property="rowVersion" column="row_version"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+    <select id="selectById" resultMap="result">SELECT * FROM kb_question WHERE id=#{id}</select>
+    <select id="lockById" resultMap="result">SELECT * FROM kb_question WHERE id=#{id} FOR UPDATE</select>
+    <select id="selectList" resultMap="result">
+        SELECT * FROM kb_question
+        <where>
+            <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
+            <if test="query != null and query != ''">
+                <choose>
+                    <when test="matchMode == 'FULLTEXT'">AND MATCH(stem_text) AGAINST(#{query} IN NATURAL LANGUAGE MODE)</when>
+                    <otherwise>AND stem_text LIKE CONCAT('%', #{escapedQuery}, '%') ESCAPE '!'</otherwise>
+                </choose>
+            </if>
+            <if test="status != null and status != ''">AND status=#{status}</if>
+            <if test="subject != null and subject != ''">AND subject=#{subject}</if>
+            <if test="questionType != null and questionType != ''">AND question_type=#{questionType}</if>
+            <if test="difficulty != null and difficulty != ''">AND difficulty=#{difficulty}</if>
+            <if test="creationKind != null and creationKind != ''">AND creation_kind=#{creationKind}</if>
+            <if test="hasImage != null">AND has_image=#{hasImage}</if>
+            <if test="matchedIds != null">
+                <choose>
+                    <when test="matchedIds.size() &gt; 0">
+                        AND id IN
+                        <foreach collection="matchedIds" item="mid" open="(" close=")" separator=",">#{mid}</foreach>
+                    </when>
+                    <otherwise>AND 1=0</otherwise>
+                </choose>
+            </if>
+            <if test="sourceId != null">AND EXISTS(SELECT 1 FROM kb_question_source qs WHERE qs.question_id=kb_question.id AND qs.source_id=#{sourceId})</if>
+            <if test="sourceIds != null">
+                <choose>
+                    <when test="sourceIds.size() &gt; 0">
+                        AND EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
+                        LEFT JOIN kb_exam_source e ON e.source_id=qs.source_id WHERE qs.question_id=kb_question.id AND qs.source_id IN
+                        <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
+                        <if test="verifiedOnly == true">AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED' AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=kb_question.stem_hash</if>
+                        )
+                    </when>
+                    <otherwise>AND 1=0</otherwise>
+                </choose>
+            </if>
+        </where>
+         ORDER BY id DESC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_question (title,stem_html,answer_html,analysis_html,stem_text,stem_hash,has_image,status,subject,question_type,difficulty,creation_kind,source_note,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{stemHtml},#{answerHtml},#{analysisHtml},#{stemText},#{stemHash},#{hasImage},#{status},#{subject},#{questionType},#{difficulty},#{creationKind},#{sourceNote},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_question SET title=#{title},stem_html=#{stemHtml},answer_html=#{answerHtml},analysis_html=#{analysisHtml},stem_text=#{stemText},stem_hash=#{stemHash},has_image=#{hasImage},status=#{status},subject=#{subject},question_type=#{questionType},difficulty=#{difficulty},creation_kind=#{creationKind},source_note=#{sourceNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <delete id="deleteById">DELETE FROM kb_question WHERE id=#{id}</delete>
+    <select id="selectKpIds" resultType="long">SELECT kp_id FROM kb_question_kp WHERE question_id=#{id} ORDER BY kp_id</select>
+    <select id="selectAssetIds" resultType="long">SELECT asset_id FROM kb_question_asset WHERE question_id=#{id} ORDER BY asset_id</select>
+    <delete id="deleteKps">DELETE FROM kb_question_kp WHERE question_id=#{id}</delete>
+    <delete id="deleteAssets">DELETE FROM kb_question_asset WHERE question_id=#{id}</delete>
+    <insert id="insertKp">INSERT INTO kb_question_kp(question_id,kp_id) VALUES(#{id},#{kpId})</insert>
+    <insert id="insertAsset">INSERT INTO kb_question_asset(question_id,asset_id) VALUES(#{id},#{assetId})</insert>
+    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_material_item WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_source WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_derivation WHERE parent_question_id=#{id})</select>
+    <select id="isRealExam" resultType="boolean">
+        SELECT EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
+        JOIN kb_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
+        WHERE q.id=#{id} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash)
+    </select>
+    <delete id="deleteIncomingDerivations">DELETE FROM kb_question_derivation WHERE child_question_id=#{id}</delete>
+    <insert id="insertDerivation">INSERT INTO kb_question_derivation(parent_question_id,child_question_id,is_primary,operation,change_note,preserved_note,create_by,create_time) VALUES(#{parentQuestionId},#{childQuestionId},#{isPrimary},#{operation},#{changeNote},#{preservedNote},#{createBy},NOW())</insert>
+    <resultMap id="derivation" type="com.ruoyi.knowledge.domain.KbDerivation">
+        <result property="parentQuestionId" column="parent_question_id"/>
+        <result property="childQuestionId" column="child_question_id"/>
+        <result property="isPrimary" column="is_primary"/>
+        <result property="operation" column="operation"/>
+        <result property="changeNote" column="change_note"/>
+        <result property="preservedNote" column="preserved_note"/>
+        <result property="parentTitle" column="parent_title"/>
+        <result property="childTitle" column="child_title"/>
+    </resultMap>
+    <select id="selectParents" resultMap="derivation">SELECT d.*,q.title AS parent_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.parent_question_id WHERE child_question_id=#{id} ORDER BY is_primary DESC,parent_question_id</select>
+    <select id="selectChildren" resultMap="derivation">SELECT d.*,q.title AS child_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.child_question_id WHERE parent_question_id=#{id} ORDER BY child_question_id</select>
+</mapper>
