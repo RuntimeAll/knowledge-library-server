@@ -12,6 +12,12 @@ public class KbQuestionQuery {
     private Boolean hasImage;
     private String status;
     private String subject;
+    private String contentKind;
+    private String layoutMode;
+    private String unitKind;
+    private String paginationMode;
+    private Long outlineId;
+    private Long outlineNodeId;
     private String questionType;
     private String difficulty;
     private String creationKind;
@@ -19,6 +25,13 @@ public class KbQuestionQuery {
     private Boolean verifiedOnly;
     private List<Long> matchedIds;
     private List<Long> sourceIds;
+
+    public String getLayoutMode() { return layoutMode; }
+    public void setLayoutMode(String layoutMode) { this.layoutMode = layoutMode; }
+    public String getUnitKind() { return unitKind; }
+    public void setUnitKind(String unitKind) { this.unitKind = unitKind; }
+    public String getPaginationMode() { return paginationMode; }
+    public void setPaginationMode(String paginationMode) { this.paginationMode = paginationMode; }
 
     public String getTitle() {
         return title;
@@ -96,6 +109,30 @@ public class KbQuestionQuery {
         return questionType;
     }
 
+    public String getContentKind() {
+        return contentKind;
+    }
+
+    public void setContentKind(String contentKind) {
+        this.contentKind = contentKind;
+    }
+
+    public Long getOutlineId() {
+        return outlineId;
+    }
+
+    public void setOutlineId(Long outlineId) {
+        this.outlineId = outlineId;
+    }
+
+    public Long getOutlineNodeId() {
+        return outlineNodeId;
+    }
+
+    public void setOutlineNodeId(Long outlineNodeId) {
+        this.outlineNodeId = outlineNodeId;
+    }
+
     public void setQuestionType(String questionType) {
         this.questionType = questionType;
     }
@@ -153,4 +190,28 @@ public class KbQuestionQuery {
     public void setSourceIds(List<Long> sourceIds) {
         this.sourceIds = sourceIds;
     }
+    private Boolean wrongOnly;
+    public Boolean getWrongOnly() {return wrongOnly;}
+    public void setWrongOnly(Boolean value) {wrongOnly=value;}
+    private Long wrongSourceId;
+    public Long getWrongSourceId() {return wrongSourceId;}
+    public void setWrongSourceId(Long value) {wrongSourceId=value;}
+    private Long examSourceId;
+    public Long getExamSourceId() {return examSourceId;}
+    public void setExamSourceId(Long value) {examSourceId=value;}
+    private String examPurpose;
+    public String getExamPurpose() {return examPurpose;}
+    public void setExamPurpose(String value) {examPurpose=value;}
+    private Integer examYear;
+    public Integer getExamYear() {return examYear;}
+    public void setExamYear(Integer value) {examYear=value;}
+    private String examRegionCode;
+    public String getExamRegionCode() {return examRegionCode;}
+    public void setExamRegionCode(String value) {examRegionCode=value;}
+    private Boolean examRegionDescendants;
+    public Boolean getExamRegionDescendants() {return examRegionDescendants;}
+    public void setExamRegionDescendants(Boolean value) {examRegionDescendants=value;}
+    private List<String> examRegionCodes;
+    public List<String> getExamRegionCodes() {return examRegionCodes;}
+    public void setExamRegionCodes(List<String> value) {examRegionCodes=value;}
 }

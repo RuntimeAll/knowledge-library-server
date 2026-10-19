@@ -5,7 +5,7 @@ import com.ruoyi.common.core.domain.BaseEntity;
 import java.util.List;
 
 /** 来源资料身份、考试属性及原件关联。 */
-public class KbSource extends BaseEntity {
+public class KbSource extends com.ruoyi.knowledge.catalog.KbCatalogDocument {
     private Long id;
     private Long rowVersion;
     private String title;

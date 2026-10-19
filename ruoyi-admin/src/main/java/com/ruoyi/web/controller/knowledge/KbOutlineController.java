@@ -29,6 +29,12 @@ public class KbOutlineController extends BaseController {
         this.service = service;
     }
 
+    @PreAuthorize("@ss.hasAnyPermi('knowledge:outline:list,knowledge:outline:query')")
+    @GetMapping("/options")
+    public AjaxResult options() {
+        return success(service.options());
+    }
+
     @PreAuthorize("@ss.hasPermi('knowledge:outline:list')")
     @GetMapping("/list")
     public TableDataInfo list(KbOutline query) {

@@ -7,6 +7,14 @@
         <result property="id" column="id"/>
         <result property="title" column="title"/>
         <result property="description" column="description"/>
+        <result property="catalogKind" column="catalog_kind"/>
+        <result property="subject" column="subject"/>
+        <result property="textbookVersion" column="textbook_version"/>
+        <result property="grade" column="grade"/>
+        <result property="term" column="term"/>
+        <result property="edition" column="edition"/>
+        <result property="catalogSource" column="catalog_source"/>
+        <result property="status" column="status"/>
         <result property="rowVersion" column="row_version"/>
         <result property="createBy" column="create_by"/>
         <result property="createTime" column="create_time"/>
@@ -20,11 +28,20 @@
         SELECT * FROM kb_outline
         <where>
             <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
+            <if test="catalogKind != null and catalogKind != ''">AND catalog_kind=#{catalogKind}</if>
+            <if test="subject != null and subject != ''">AND subject=#{subject}</if>
+            <if test="textbookVersion != null and textbookVersion != ''">AND textbook_version=#{textbookVersion}</if>
+            <if test="grade != null and grade != ''">AND grade=#{grade}</if>
+            <if test="term != null and term != ''">AND term=#{term}</if>
+            <if test="status != null and status != ''">AND status=#{status}</if>
         </where>
          ORDER BY id DESC
     </select>
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_outline (title,description,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{description},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
-    <update id="update">UPDATE kb_outline SET title=#{title},description=#{description},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_outline (title,description,catalog_kind,subject,textbook_version,grade,term,edition,catalog_source,status,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{description},#{catalogKind},#{subject},#{textbookVersion},#{grade},#{term},#{edition},#{catalogSource},#{status},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_outline SET title=#{title},description=#{description},catalog_kind=#{catalogKind},subject=#{subject},textbook_version=#{textbookVersion},grade=#{grade},term=#{term},edition=#{edition},catalog_source=#{catalogSource},status=#{status},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_outline WHERE id=#{id}</delete>
     <select id="countNodes" resultType="long">SELECT COUNT(*) FROM kb_outline_node WHERE outline_id=#{id}</select>
+    <select id="selectTextbookVersions" resultType="string">SELECT DISTINCT textbook_version FROM kb_outline WHERE textbook_version IS NOT NULL AND textbook_version != '' ORDER BY textbook_version</select>
+    <select id="countCatalogReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_source_outline_scope WHERE outline_id=#{id}) + (SELECT COUNT(*) FROM kb_product_outline_scope WHERE outline_id=#{id})+(SELECT COUNT(*) FROM kb_render_job j, JSON_TABLE(j.config_snapshot_json, '$.productCatalog.outlineScopes[*]' COLUMNS(outline_id BIGINT PATH '$.outlineId')) r WHERE r.outline_id=#{id})</select>
+    <select id="countNodeCatalogReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_source_outline_scope_node WHERE node_id=#{id}) + (SELECT COUNT(*) FROM kb_product_outline_scope_node WHERE node_id=#{id})+(SELECT COUNT(*) FROM kb_render_job j, JSON_TABLE(j.config_snapshot_json, '$.productCatalog.outlineScopes[*].nodeIds[*]' COLUMNS(node_id BIGINT PATH '$')) r WHERE r.node_id=#{id})</select>
 </mapper>

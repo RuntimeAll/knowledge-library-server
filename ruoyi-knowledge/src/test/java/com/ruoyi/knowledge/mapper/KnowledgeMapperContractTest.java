@@ -87,11 +87,11 @@ class KnowledgeMapperContractTest {
     void materialListCountsItemsAndSourceListFiltersVerificationStatus() {
         assertTrue(
                 sql("KbMaterialMapper.selectList", new KbMaterial()).contains("AS question_count"));
-        KbSource source = new KbSource();
+        com.ruoyi.knowledge.catalog.KbCatalogQuery source = new com.ruoyi.knowledge.catalog.KbCatalogQuery();
         source.setAuthenticityStatus("VERIFIED");
         String sourceSql = sql("KbSourceMapper.selectList", source);
         assertTrue(sourceSql.contains("e.authenticity_status=?"));
-        assertTrue(sourceSql.contains("s.source_kind='EXAM'"));
+        assertTrue(sourceSql.contains("r.source_kind='EXAM'"));
     }
 
     @Test
@@ -115,5 +115,58 @@ class KnowledgeMapperContractTest {
         assertTrue(update.contains("row_version=row_version+1"));
         assertTrue(update.contains("update_by=?"));
         assertTrue(update.contains("extraction_status='ORIGINAL_ONLY'"));
+    }
+
+    @Test
+    void knowledgeContentCannotBecomeAnExamOnlyCandidateOrComparisonFact() {
+        KbQuestionQuery candidates = new KbQuestionQuery();
+        candidates.setVerifiedOnly(true);
+        String candidateSql = sql("KbQuestionMapper.selectList", candidates);
+        assertTrue(candidateSql.contains("content_kind='EXERCISE'"));
+        assertTrue(candidateSql.contains("vqs.matched_stem_hash=kb_question.stem_hash"));
+        assertTrue(sql("KbQuestionMapper.isRealExam", Map.of("id", 1L))
+                .contains("q.content_kind='EXERCISE'"));
+        for (String statement : List.of("realInSources", "selectVerifiedOccurrenceIdForUpdate")) {
+            assertTrue(sql("KbMaterialMapper." + statement,
+                    Map.of("questionId", 1L, "sourceIds", List.of(2L)))
+                    .contains("q.content_kind='EXERCISE'"));
+        }
+        KbComparisonQuery comparison = new KbComparisonQuery();
+        comparison.setPointIds(List.of(1L));
+        comparison.setPointMatches(List.of(new KbPointMatch(1L, "考点", List.of(2L))));
+        comparison.page(1, 20);
+        for (String statement : List.of("selectComparisonMatches", "countComparisonMatches", "selectComparisonCoverage")) {
+            assertTrue(sql("KbMaterialMapper." + statement, comparison)
+                    .contains("q.content_kind='EXERCISE'"));
+        }
+    }
+
+    @Test
+    void contentAndTextbookFiltersUseActualPointBindings() {
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setContentKind("KNOWLEDGE");
+        query.setOutlineId(16L);
+        query.setOutlineNodeId(22L);
+        String value = sql("KbQuestionMapper.selectList", query);
+        assertTrue(value.contains("content_kind=?"));
+        assertTrue(value.contains("JOIN kb_kp_outline ko ON ko.kp_id=qk.kp_id"));
+        assertTrue(value.contains("JOIN kb_outline_node_kp nk ON nk.kp_id=qk.kp_id"));
+    }
+
+    @Test void layoutFiltersAndPersistenceAreIndependentOfImageFlag() {
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setLayoutMode("STRUCTURED");
+        query.setUnitKind("GROUP");
+        query.setPaginationMode("KEEP_TOGETHER");
+        query.setHasImage(false);
+        String value = sql("KbQuestionMapper.selectList", query);
+        for (String column : List.of("layout_mode", "unit_kind", "pagination_mode", "has_image"))
+            assertTrue(value.contains(column + "=?"));
+        var question = new com.ruoyi.knowledge.domain.KbQuestion();
+        for (String statement : List.of("insert", "update")) {
+            String write = sql("KbQuestionMapper." + statement, question);
+            for (String column : List.of("layout_mode", "unit_kind", "pagination_mode", "layout_note", "item_count"))
+                assertTrue(write.contains(column));
+        }
     }
 }

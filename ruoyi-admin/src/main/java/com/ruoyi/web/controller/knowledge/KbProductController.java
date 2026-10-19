@@ -30,7 +30,11 @@ public class KbProductController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:product:list')")
     @GetMapping("/list")
-    public TableDataInfo list(KbProduct query) {
+    public TableDataInfo list(
+            com.ruoyi.knowledge.catalog.KbCatalogQuery query,
+            jakarta.servlet.http.HttpServletRequest request) {
+        query.rejectUnknown(request.getParameterMap().keySet());
+        service.prepareQuery(query);
         startPage();
         return getDataTable(service.list(query));
     }
@@ -69,5 +73,14 @@ public class KbProductController extends BaseController {
     @GetMapping("/{id}/versions")
     public AjaxResult versions(@PathVariable Long id) {
         return success(service.versions(id));
+    }
+
+    @PreAuthorize("@ss.hasPermi('knowledge:product:edit')")
+    @Log(title = "资料描述", businessType = BusinessType.UPDATE)
+    @PutMapping("/{id}/catalog")
+    public AjaxResult catalog(
+            @PathVariable Long id,
+            @RequestBody com.ruoyi.knowledge.catalog.KbCatalogCommand command) {
+        return success(service.catalog(id, command, getUsername()));
     }
 }

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.knowledge.mapper.KbLayoutMapper">
+<resultMap id="exp" type="com.ruoyi.knowledge.layout.KbExperience">
+<result property="id" column="id"/>
+<result property="rowVersion" column="row_version"/>
+<result property="code" column="code"/>
+<result property="name" column="name"/>
+<result property="experienceType" column="experience_type"/>
+<result property="description" column="description"/>
+<result property="usageNotes" column="usage_notes"/>
+<result property="status" column="status"/>
+<result property="createBy" column="create_by"/>
+<result property="createTime" column="create_time"/>
+<result property="updateBy" column="update_by"/>
+<result property="updateTime" column="update_time"/>
+<result property="remark" column="remark"/>
+</resultMap>
+<resultMap id="ver" type="com.ruoyi.knowledge.layout.KbExperienceVersion">
+<result property="id" column="id"/>
+<result property="rowVersion" column="row_version"/>
+<result property="experienceId" column="experience_id"/>
+<result property="name" column="name"/>
+<result property="versionNo" column="version_no"/>
+<result property="status" column="status"/>
+<result property="schemaVersion" column="schema_version"/>
+<result property="fieldSchemaJson" column="field_schema_json"/>
+<result property="defaultValuesJson" column="default_values_json"/>
+<result property="definitionJson" column="definition_json"/>
+<result property="definitionHash" column="definition_hash"/>
+<result property="changeNote" column="change_note"/>
+<result property="publishBy" column="publish_by"/>
+<result property="publishTime" column="publish_time"/>
+<result property="createBy" column="create_by"/>
+<result property="createTime" column="create_time"/>
+<result property="updateBy" column="update_by"/>
+<result property="updateTime" column="update_time"/>
+<result property="remark" column="remark"/>
+</resultMap>
+<resultMap id="job" type="com.ruoyi.knowledge.layout.KbRenderJob">
+<result property="id" column="id"/>
+<result property="rowVersion" column="row_version"/>
+<result property="templateVersionId" column="template_version_id"/>
+<result property="actorUserId" column="actor_user_id"/>
+<result property="idempotencyKey" column="idempotency_key"/>
+<result property="requestHash" column="request_hash"/>
+<result property="materialId" column="material_id"/>
+<result property="materialRowVersion" column="material_row_version"/>
+<result property="configSnapshotJson" column="config_snapshot_json"/>
+<result property="templateSnapshotJson" column="template_snapshot_json"/>
+<result property="rendererFingerprint" column="renderer_fingerprint"/>
+<result property="status" column="status"/>
+<result property="leaseToken" column="lease_token"/>
+<result property="leaseUntil" column="lease_until"/>
+<result property="retryCount" column="retry_count"/>
+<result property="errorCode" column="error_code"/>
+<result property="errorMessage" column="error_message"/>
+<result property="createBy" column="create_by"/>
+<result property="createTime" column="create_time"/>
+<result property="updateBy" column="update_by"/>
+<result property="updateTime" column="update_time"/>
+<result property="remark" column="remark"/>
+</resultMap>
+<resultMap id="item" type="com.ruoyi.knowledge.layout.KbRenderItem">
+<result property="jobId" column="job_id"/>
+<result property="seq" column="seq"/>
+<result property="sectionKey" column="section_key"/>
+<result property="dayKey" column="day_key"/>
+<result property="questionId" column="question_id"/>
+<result property="questionRowVersion" column="question_row_version"/>
+<result property="contentHash" column="content_hash"/>
+<result property="snapshotJson" column="snapshot_json"/>
+</resultMap>
+<resultMap id="asset" type="com.ruoyi.knowledge.layout.KbLayoutAsset">
+<result property="versionId" column="version_id"/>
+<result property="jobId" column="job_id"/>
+<result property="resourceKey" column="resource_key"/>
+<result property="assetId" column="asset_id"/>
+<result property="assetRole" column="asset_role"/>
+<result property="sha256" column="sha256"/>
+<result property="mimeType" column="mime_type"/>
+<result property="path" column="path"/>
+</resultMap>
+<resultMap id="output" type="com.ruoyi.knowledge.layout.KbRenderOutput">
+<result property="productId" column="product_id"/>
+<result property="assetId" column="asset_id"/>
+<result property="packageAssetId" column="package_asset_id"/>
+<result property="outputKey" column="output_key"/>
+<result property="sha256" column="sha256"/>
+<result property="packageSha256" column="package_sha256"/>
+<result property="pageCount" column="page_count"/>
+</resultMap>
+
+<select id="experiences" resultMap="exp">SELECT * FROM kb_experience <where><if test="name != null and name != ''">AND name LIKE CONCAT('%',#{name},'%')</if><if test="status != null and status != ''">AND status=#{status}</if></where> ORDER BY id DESC</select>
+<select id="experience" resultMap="exp">SELECT * FROM kb_experience WHERE id=#{id}</select>
+<select id="lockExperience" resultMap="exp">SELECT * FROM kb_experience WHERE id=#{id} FOR UPDATE</select>
+<insert id="insertExperience" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_experience(code,name,experience_type,description,usage_notes,status,create_by,update_by) VALUES(#{code},#{name},#{experienceType},#{description},#{usageNotes},#{status},#{createBy},#{createBy})</insert>
+<update id="updateExperience">UPDATE kb_experience SET name=#{name},description=#{description},usage_notes=#{usageNotes},status=#{status},row_version=row_version+1,update_by=#{updateBy},update_time=NOW() WHERE id=#{id} AND row_version=#{rowVersion}</update>
+<delete id="deleteExperience">DELETE FROM kb_experience WHERE id=#{id}</delete>
+<select id="versions" resultMap="ver">SELECT v.*,e.name FROM kb_experience_version v JOIN kb_experience e ON e.id=v.experience_id WHERE experience_id=#{experienceId}<if test="status != null and status != ''"> AND v.status=#{status}</if> ORDER BY version_no DESC</select>
+<select id="options" resultMap="ver">SELECT v.id,v.experience_id,v.version_no,v.status,e.name FROM kb_experience_version v JOIN kb_experience e ON e.id=v.experience_id WHERE v.status='PUBLISHED' AND e.status='ACTIVE' ORDER BY e.id DESC,v.version_no DESC LIMIT 200</select>
+<select id="version" resultMap="ver">SELECT v.*,e.name FROM kb_experience_version v JOIN kb_experience e ON e.id=v.experience_id WHERE v.id=#{id}</select>
+<select id="lockVersion" resultMap="ver">SELECT * FROM kb_experience_version WHERE id=#{id} FOR UPDATE</select>
+<select id="nextVersion" resultType="int">SELECT COALESCE(MAX(version_no),0)+1 FROM kb_experience_version WHERE experience_id=#{id}</select>
+<insert id="insertVersion" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_experience_version(experience_id,version_no,status,schema_version,field_schema_json,default_values_json,definition_json,definition_hash,change_note,create_by,update_by) VALUES(#{experienceId},#{versionNo},'DRAFT',#{schemaVersion},#{fieldSchemaJson},#{defaultValuesJson},#{definitionJson},#{definitionHash},#{changeNote},#{createBy},#{createBy})</insert>
+<update id="updateVersion">UPDATE kb_experience_version SET schema_version=#{schemaVersion},field_schema_json=#{fieldSchemaJson},default_values_json=#{defaultValuesJson},definition_json=#{definitionJson},definition_hash=#{definitionHash},change_note=#{changeNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW() WHERE id=#{id} AND status='DRAFT' AND row_version=#{rowVersion}</update>
+<update id="publishVersion">UPDATE kb_experience_version SET status='PUBLISHED',publish_by=#{publishBy},publish_time=NOW(),row_version=row_version+1,update_by=#{publishBy},update_time=NOW() WHERE id=#{id} AND status='DRAFT' AND row_version=#{rowVersion}</update>
+<delete id="deleteVersion">DELETE FROM kb_experience_version WHERE id=#{id}</delete>
+<select id="versionAssets" resultMap="asset">SELECT va.*,a.sha256,a.content_type mime_type FROM kb_experience_version_asset va JOIN kb_asset a ON a.asset_id=va.asset_id WHERE version_id=#{id} ORDER BY resource_key</select>
+<insert id="insertVersionAsset">INSERT INTO kb_experience_version_asset(version_id,resource_key,asset_id,asset_role) VALUES(#{versionId},#{resourceKey},#{assetId},#{assetRole})</insert>
+<delete id="deleteVersionAssets">DELETE FROM kb_experience_version_asset WHERE version_id=#{id}</delete>
+<select id="versionJobs" resultType="long">SELECT COUNT(*) FROM kb_render_job WHERE template_version_id=#{id}</select>
+<select id="jobs" resultMap="job">SELECT id,row_version,template_version_id,actor_user_id,idempotency_key,material_id,material_row_version,renderer_fingerprint,status,retry_count,error_code,error_message,create_by,create_time,update_time FROM kb_render_job <where><if test="actorUserId != null">AND actor_user_id=#{actorUserId}</if><if test="status != null and status != ''">AND status=#{status}</if></where> ORDER BY id DESC</select>
+<select id="job" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id}</select>
+<select id="lockJob" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id} FOR UPDATE</select>
+<select id="lockOwnedJob" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id} AND status='RUNNING' AND lease_token=#{token} AND lease_until &gt; NOW() FOR UPDATE</select>
+<select id="ownKey" resultMap="job">SELECT * FROM kb_render_job WHERE actor_user_id=#{actorUserId} AND idempotency_key=#{key}</select>
+<select id="lockOwnKey" resultMap="job" flushCache="true" useCache="false">SELECT * FROM kb_render_job WHERE actor_user_id=#{actorUserId} AND idempotency_key=#{key} FOR UPDATE</select>
+<select id="questionSourceIds" resultType="long" flushCache="true" useCache="false">SELECT DISTINCT source_id FROM kb_question_source WHERE question_id IN <foreach collection="questionIds" item="id" open="(" separator="," close=")">#{id}</foreach> ORDER BY source_id</select>
+<select id="lockSource" resultType="long" flushCache="true" useCache="false">SELECT id FROM kb_source WHERE id=#{id} FOR UPDATE</select>
+<insert id="insertJob" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_render_job(template_version_id,actor_user_id,idempotency_key,request_hash,material_id,material_row_version,config_snapshot_json,template_snapshot_json,status,create_by,update_by) VALUES(#{templateVersionId},#{actorUserId},#{idempotencyKey},#{requestHash},#{materialId},#{materialRowVersion},#{configSnapshotJson},#{templateSnapshotJson},'QUEUED',#{createBy},#{createBy})</insert>
+<select id="items" resultMap="item">SELECT * FROM kb_render_job_item WHERE job_id=#{id} ORDER BY seq</select>
+<insert id="insertItem">INSERT INTO kb_render_job_item(job_id,seq,section_key,day_key,question_id,question_row_version,content_hash,snapshot_json) VALUES(#{jobId},#{seq},#{sectionKey},#{dayKey},#{questionId},#{questionRowVersion},#{contentHash},#{snapshotJson})</insert>
+<select id="jobAssets" resultMap="asset">SELECT ja.*,a.content_type mime_type FROM kb_render_job_asset ja JOIN kb_asset a ON a.asset_id=ja.asset_id WHERE job_id=#{id} ORDER BY resource_key</select>
+<insert id="insertJobAsset">INSERT INTO kb_render_job_asset(job_id,resource_key,asset_id,asset_role,sha256) VALUES(#{jobId},#{resourceKey},#{assetId},#{assetRole},#{sha256})</insert>
+<select id="outputs" resultMap="output">SELECT p.id product_id,p.asset_id,p.render_output_key output_key,a.sha256,pa.asset_id package_asset_id,pa.sha256 package_sha256 FROM kb_product p JOIN kb_asset a ON a.asset_id=p.asset_id LEFT JOIN kb_render_job_asset pa ON pa.job_id=p.render_job_id AND pa.resource_key=CONCAT('output:',p.render_output_key,':package') WHERE p.render_job_id=#{id} ORDER BY p.id</select>
+<select id="nextJob" resultType="long">SELECT id FROM kb_render_job WHERE status='QUEUED' OR (status='RUNNING' AND lease_until &lt; NOW()) ORDER BY id LIMIT 1</select>
+<update id="claim">UPDATE kb_render_job SET status='RUNNING',lease_token=#{leaseToken},lease_until=DATE_ADD(NOW(),INTERVAL 3 MINUTE),retry_count=retry_count+1,row_version=row_version+1,update_time=NOW(),error_code=NULL,error_message=NULL WHERE id=#{id} AND (status='QUEUED' OR (status='RUNNING' AND lease_until &lt; NOW()))</update>
+<update id="heartbeat">UPDATE kb_render_job SET lease_until=DATE_ADD(NOW(),INTERVAL 3 MINUTE),update_time=NOW() WHERE id=#{id} AND status='RUNNING' AND lease_token=#{leaseToken}</update>
+<update id="finish">UPDATE kb_render_job SET status=#{status},renderer_fingerprint=#{rendererFingerprint},error_code=#{errorCode},error_message=#{errorMessage},lease_until=NULL,lease_token=NULL,row_version=row_version+1,update_time=NOW() WHERE id=#{id} AND status='RUNNING' AND lease_token=#{leaseToken}</update>
+<update id="retry">UPDATE kb_render_job SET status='QUEUED',error_code=NULL,error_message=NULL,row_version=row_version+1,update_time=NOW() WHERE id=#{id} AND status='FAILED'</update>
+<delete id="deleteItems">DELETE FROM kb_render_job_item WHERE job_id=#{id}</delete>
+<delete id="deleteJobAssets">DELETE FROM kb_render_job_asset WHERE job_id=#{id}</delete>
+<delete id="deleteJob">DELETE FROM kb_render_job WHERE id=#{id}</delete>
+<select id="assetJobs" resultMap="job">SELECT j.* FROM kb_render_job j JOIN kb_render_job_asset a ON a.job_id=j.id WHERE a.asset_id=#{assetId} AND a.asset_role IN ('OUTPUT_PDF','OUTPUT_PACKAGE')</select>
+</mapper>

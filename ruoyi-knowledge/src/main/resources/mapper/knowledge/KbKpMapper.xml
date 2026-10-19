@@ -7,7 +7,7 @@
         <result property="id" column="id"/>
         <result property="name" column="name"/>
         <result property="description" column="description"/>
-        <result property="gradeHint" column="grade_hint"/>
+        <result property="subject" column="subject"/>
         <result property="rowVersion" column="row_version"/>
         <result property="createBy" column="create_by"/>
         <result property="createTime" column="create_time"/>
@@ -18,19 +18,45 @@
     <select id="selectById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id}</select>
     <select id="lockById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id} FOR UPDATE</select>
     <select id="selectList" resultMap="result">
-        SELECT * FROM kb_kp
+        SELECT k.* FROM kb_kp k
         <where>
             <if test="name != null and name != ''">AND name LIKE CONCAT('%', #{name}, '%')</if>
+            <if test="subject != null and subject != ''">AND subject=#{subject}</if>
+            <if test="parentId != null and parentId == 0">AND NOT EXISTS(SELECT 1 FROM kb_kp_edge e WHERE e.to_kp_id=k.id AND e.kind='NEST')</if>
+            <if test="parentId != null and parentId != 0">AND EXISTS(SELECT 1 FROM kb_kp_edge e WHERE e.to_kp_id=k.id AND e.kind='NEST' AND e.from_kp_id=#{parentId})</if>
+            <if test="outlineId != null">AND EXISTS(SELECT 1 FROM kb_kp_outline b WHERE b.kp_id=k.id AND b.outline_id=#{outlineId})</if>
+            <if test="outlineNodeId != null">AND EXISTS(SELECT 1 FROM kb_outline_node_kp b WHERE b.kp_id=k.id AND b.node_id=#{outlineNodeId})</if>
         </where>
          ORDER BY id DESC
     </select>
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_kp (name,description,grade_hint,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{name},#{description},#{gradeHint},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
-    <update id="update">UPDATE kb_kp SET name=#{name},description=#{description},grade_hint=#{gradeHint},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_kp (name,description,subject,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{name},#{description},#{subject},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_kp SET name=#{name},description=#{description},subject=#{subject},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_kp WHERE id=#{id}</delete>
     <select id="lockGraph" resultMap="result">SELECT * FROM kb_kp ORDER BY id FOR UPDATE</select>
     <select id="selectEdges" resultType="com.ruoyi.knowledge.domain.KbKpEdge">SELECT from_kp_id AS fromKpId,to_kp_id AS toKpId,kind FROM kb_kp_edge</select>
+    <select id="selectHierarchyPoints" resultMap="result">SELECT id,name FROM kb_kp</select>
+    <delete id="deleteEdge">DELETE FROM kb_kp_edge WHERE from_kp_id=#{fromKpId} AND to_kp_id=#{toKpId} AND kind=#{kind}</delete>
+    <update id="touchRelations">
+        UPDATE kb_kp SET row_version=row_version+1,update_by=#{updateBy},update_time=NOW() WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </update>
     <select id="selectQuestionPoints" resultType="com.ruoyi.knowledge.domain.KbQuestionKp">SELECT question_id AS questionId,kp_id AS kpId FROM kb_question_kp</select>
     <delete id="deleteEdges">DELETE FROM kb_kp_edge WHERE from_kp_id=#{id}</delete>
     <insert id="insertEdge">INSERT INTO kb_kp_edge(from_kp_id,to_kp_id,kind) VALUES(#{fromKpId},#{toKpId},#{kind})</insert>
-    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_kp_edge WHERE to_kp_id=#{id})+(SELECT COUNT(*) FROM kb_question_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_outline_node_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_material WHERE kp_id=#{id})</select>
+    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_kp_edge WHERE to_kp_id=#{id} OR from_kp_id=#{id})+(SELECT COUNT(*) FROM kb_question_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_outline_node_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_material WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_source_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_product_kp WHERE kp_id=#{id})+(SELECT COUNT(*) FROM kb_render_job j, JSON_TABLE(j.config_snapshot_json, '$.productCatalog.declaredKpIds[*]' COLUMNS(kp_id BIGINT PATH '$')) r WHERE r.kp_id=#{id})</select>
+    <select id="selectOutlineIds" resultType="long">SELECT outline_id FROM kb_kp_outline WHERE kp_id=#{id} ORDER BY outline_id</select>
+    <select id="selectOutlineBindings" resultType="com.ruoyi.knowledge.dto.KbKpOutlineBinding">
+        SELECT o.id AS outlineId,o.title AS outlineTitle,o.subject,o.textbook_version AS textbookVersion,
+               o.grade,o.term,o.edition,n.id AS nodeId,n.title AS nodeTitle
+        FROM kb_kp_outline b JOIN kb_outline o ON o.id=b.outline_id
+        LEFT JOIN (kb_outline_node_kp nk JOIN kb_outline_node n ON n.id=nk.node_id)
+          ON nk.kp_id=b.kp_id AND n.outline_id=b.outline_id
+        WHERE b.kp_id=#{id} ORDER BY o.id,n.sort_order,n.id
+    </select>
+    <insert id="insertOutline">INSERT IGNORE INTO kb_kp_outline(kp_id,outline_id) VALUES(#{kpId},#{outlineId})</insert>
+    <delete id="deleteOutline">DELETE FROM kb_kp_outline WHERE kp_id=#{kpId} AND outline_id=#{outlineId}</delete>
+    <delete id="deleteOutlines">DELETE FROM kb_kp_outline WHERE kp_id=#{id}</delete>
+    <select id="countChapterLinks" resultType="long">SELECT COUNT(*) FROM kb_outline_node_kp nk JOIN kb_outline_node n ON n.id=nk.node_id WHERE nk.kp_id=#{kpId} AND n.outline_id=#{outlineId}</select>
+    <select id="countOutlinePoints" resultType="long">SELECT COUNT(*) FROM kb_kp_outline WHERE outline_id=#{outlineId}</select>
+    <select id="countMismatchedQuestions" resultType="long">SELECT (SELECT COUNT(*) FROM kb_question_kp qk JOIN kb_question q ON q.id=qk.question_id WHERE qk.kp_id=#{kpId} AND q.subject IS NOT NULL AND q.subject!='' AND q.subject!=#{subject}) + (SELECT COUNT(*) FROM kb_source_kp k JOIN kb_source_profile p ON p.source_id=k.source_id WHERE k.kp_id=#{kpId} AND p.subject != #{subject}) + (SELECT COUNT(*) FROM kb_product_kp k JOIN kb_product_profile p ON p.product_id=k.product_id WHERE k.kp_id=#{kpId} AND p.subject != #{subject})</select>
 </mapper>

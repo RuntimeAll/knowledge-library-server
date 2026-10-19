@@ -6,6 +6,8 @@ import com.ruoyi.knowledge.domain.KbOutlineNode;
 import java.util.List;
 
 public interface IKbOutlineService {
+    com.ruoyi.knowledge.domain.dto.KbOutlineOptions options();
+
     List<KbOutline> list(KbOutline query);
 
     KbOutline get(Long id);

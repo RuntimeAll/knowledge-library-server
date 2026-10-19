@@ -10,18 +10,26 @@
     <result property="sha256" column="sha256"/><result property="status" column="status"/>
     <result property="failureMessage" column="failure_message"/><result property="testRunId" column="test_run_id"/>
     <result property="externalKey" column="external_key"/>
+    <result property="uploadToken" column="upload_token"/>
     <result property="createBy" column="create_by"/><result property="createTime" column="create_time"/>
     <result property="updateBy" column="update_by"/><result property="updateTime" column="update_time"/>
   </resultMap>
   <select id="selectById" resultMap="Asset">SELECT * FROM kb_asset WHERE asset_id=#{assetId}</select>
   <select id="selectByIdForUpdate" resultMap="Asset">SELECT * FROM kb_asset WHERE asset_id=#{assetId} FOR UPDATE</select>
   <select id="selectByExternalKey" resultMap="Asset">SELECT * FROM kb_asset WHERE create_by=#{createBy} AND external_key=#{externalKey}</select>
-  <update id="claimRetry">UPDATE kb_asset SET status='UPLOADING',failure_message=NULL,update_time=NOW() WHERE asset_id=#{assetId} AND status='FAILED'</update>
+  <update id="claimRetry">
+    UPDATE kb_asset SET status='UPLOADING',failure_message=NULL,upload_token=#{uploadToken},update_time=NOW()
+    WHERE asset_id=#{assetId} AND (status='FAILED' OR (status='UPLOADING' AND COALESCE(update_time,create_time) &lt; DATE_SUB(NOW(), INTERVAL 10 MINUTE)))
+  </update>
   <select id="selectByRunId" resultMap="Asset">SELECT * FROM kb_asset WHERE test_run_id=#{testRunId} ORDER BY asset_id</select>
   <insert id="insert" useGeneratedKeys="true" keyProperty="assetId">
-    INSERT INTO kb_asset(purpose,storage_provider,bucket_name,object_key,original_name,content_type,file_size,sha256,status,test_run_id,external_key,create_by)
-    VALUES(#{purpose},'ALIYUN_OSS',#{bucketName},#{objectKey},#{originalName},#{contentType},#{fileSize},#{sha256},#{status},#{testRunId},#{externalKey},#{createBy})
+    INSERT INTO kb_asset(purpose,storage_provider,bucket_name,object_key,original_name,content_type,file_size,sha256,status,test_run_id,external_key,create_by,upload_token)
+    VALUES(#{purpose},'ALIYUN_OSS',#{bucketName},#{objectKey},#{originalName},#{contentType},#{fileSize},#{sha256},#{status},#{testRunId},#{externalKey},#{createBy},#{uploadToken})
   </insert>
+  <update id="finishUpload">
+    UPDATE kb_asset SET status=#{status},oss_version_id=#{ossVersionId},failure_message=#{failureMessage},update_by=#{updateBy},update_time=NOW()
+    WHERE asset_id=#{assetId} AND status='UPLOADING' AND upload_token=#{uploadToken}
+  </update>
   <update id="updateState">
     UPDATE kb_asset SET status=#{status},oss_version_id=#{ossVersionId},failure_message=#{failureMessage},update_by=#{updateBy},update_time=NOW()
     WHERE asset_id=#{assetId}
@@ -37,5 +45,9 @@
       + (SELECT COUNT(*) FROM kb_question_source WHERE evidence_asset_id=#{assetId})
       + (SELECT COUNT(*) FROM kb_import_batch WHERE input_asset_id=#{assetId})
       + (SELECT COUNT(*) FROM kb_import_resource WHERE asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_exam_source_detail WHERE evidence_asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_occurrence_collection WHERE evidence_asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_experience_version_asset WHERE asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_render_job_asset WHERE asset_id=#{assetId})
   </select>
 </mapper>

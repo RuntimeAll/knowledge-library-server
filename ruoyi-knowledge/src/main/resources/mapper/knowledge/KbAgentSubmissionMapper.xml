@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN' 'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbAgentSubmissionMapper">
+  <insert id="claim">INSERT INTO kb_agent_submission(actor,operation,external_key,request_hash)
+    VALUES(#{actor},#{operation},#{key},#{hash}) ON DUPLICATE KEY UPDATE id=id</insert>
+  <select id="lock" resultType="com.ruoyi.knowledge.domain.KbAgentSubmission">
+    SELECT request_hash AS requestHash,resource_id AS resourceId FROM kb_agent_submission
+    WHERE actor=#{actor} AND operation=#{operation} AND external_key=#{key} FOR UPDATE
+  </select>
+  <update id="complete">UPDATE kb_agent_submission SET resource_id=#{resourceId}
+    WHERE actor=#{actor} AND operation=#{operation} AND external_key=#{key} AND resource_id IS NULL</update>
+  <select id="findResource" resultType="long">SELECT resource_id FROM kb_agent_submission
+    WHERE actor=#{actor} AND operation=#{operation} AND external_key=#{key}</select>
+</mapper>

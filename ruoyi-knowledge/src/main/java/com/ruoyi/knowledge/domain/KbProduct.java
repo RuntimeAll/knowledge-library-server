@@ -1,9 +1,8 @@
 package com.ruoyi.knowledge.domain;
 
-import com.ruoyi.common.core.domain.BaseEntity;
 
 /** 不可变成品文件的版本记录与创建时溯源。 */
-public class KbProduct extends BaseEntity {
+public class KbProduct extends com.ruoyi.knowledge.catalog.KbCatalogDocument {
     private Long id;
     private Long rowVersion;
     private String title;
@@ -13,6 +12,26 @@ public class KbProduct extends BaseEntity {
     private Long previousProductId;
     private Long rootProductId;
     private Integer versionNo;
+    private Long renderJobId;
+    private String renderOutputKey;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(
+            shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+    public Long getRenderJobId() {
+        return renderJobId;
+    }
+
+    public void setRenderJobId(Long value) {
+        renderJobId = value;
+    }
+
+    public String getRenderOutputKey() {
+        return renderOutputKey;
+    }
+
+    public void setRenderOutputKey(String value) {
+        renderOutputKey = value;
+    }
 
     @com.fasterxml.jackson.annotation.JsonFormat(
             shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
@@ -96,5 +115,17 @@ public class KbProduct extends BaseEntity {
 
     public void setVersionNo(Integer versionNo) {
         this.versionNo = versionNo;
+    }
+
+    private Long matchedProductId;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(
+            shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+    public Long getMatchedProductId() {
+        return matchedProductId;
+    }
+
+    public void setMatchedProductId(Long value) {
+        matchedProductId = value;
     }
 }

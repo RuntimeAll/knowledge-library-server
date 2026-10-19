@@ -54,6 +54,14 @@ public class KbAssetServiceImpl implements IKbAssetService {
     }
 
     @Override
+    public KbAsset requireOriginal(Long assetId) {
+        KbAsset asset = requireReady(assetId);
+        if (!Set.of("SOURCE_ORIGINAL", "PRODUCT_ORIGINAL").contains(asset.getPurpose()))
+            throw new ServiceException("来源和成品须引用原件资产，题图或导入中间文件不能作为原件", 400);
+        return asset;
+    }
+
+    @Override
     public KbAsset upload(MultipartFile file, String purpose, String testRunId) {
         return upload(file, purpose, testRunId, null);
     }
@@ -67,6 +75,13 @@ public class KbAssetServiceImpl implements IKbAssetService {
         } catch (IOException e) {
             throw new ServiceException("读取上传文件失败");
         }
+    }
+
+    @Override
+    public KbAsset findOwnUpload(String externalKey) {
+        if (externalKey == null || externalKey.isBlank() || externalKey.length() > 128)
+            throw new ServiceException("文件幂等键长度必须为1至128字符", 400);
+        return mapper.selectByExternalKey(SecurityUtils.getUsername(), externalKey);
     }
 
     @Override
@@ -95,6 +110,7 @@ public class KbAssetServiceImpl implements IKbAssetService {
         asset.setFileSize((long) bytes.length);
         asset.setSha256(sha256(bytes));
         asset.setStatus("UPLOADING");
+        asset.setUploadToken(UUID.randomUUID().toString());
         asset.setTestRunId(runId);
         asset.setCreateBy(SecurityUtils.getUsername());
         if (externalKey != null && (externalKey.isBlank() || externalKey.length() > 128)) { throw new ServiceException("文件幂等键长度必须为1至128字符"); }
@@ -115,10 +131,12 @@ public class KbAssetServiceImpl implements IKbAssetService {
                 throw new ServiceException("文件幂等键已用于不同内容或用途");
             }
             if ("READY".equals(existing.getStatus())) { return existing; }
-            if (!"FAILED".equals(existing.getStatus()) || mapper.claimRetry(existing.getAssetId()) != 1) {
-                throw new ServiceException("文件正在处理或已删除，请按文件编号查询状态");
+            String uploadToken = asset.getUploadToken();
+            if (mapper.claimRetry(existing.getAssetId(), uploadToken) != 1) {
+                throw new ServiceException("文件正在处理或已删除，请按原幂等键查询；上传中断超过10分钟可用原请求恢复", 409);
             }
             asset = existing;
+            asset.setUploadToken(uploadToken);
         }
         try {
             ObjectStorage.StoredObject remote = retry ? storage.stat(asset.getBucketName(), asset.getObjectKey()) : null;
@@ -134,13 +152,14 @@ public class KbAssetServiceImpl implements IKbAssetService {
             asset.setStatus("READY");
             asset.setFailureMessage(null);
             asset.setUpdateBy(asset.getCreateBy());
-            mapper.updateState(asset);
+            if (mapper.finishUpload(asset) != 1)
+                throw new ServiceException("上传处理权已转交恢复请求，请按原幂等键查询结果", 409);
             return asset;
         } catch (RuntimeException e) {
             // An upload can have succeeded remotely before a timeout. Keep the exact key for reconciliation.
             asset.setStatus("FAILED");
             asset.setFailureMessage("OSS上传或文件登记失败，请按文件编号重试清理");
-            mapper.updateState(asset);
+            mapper.finishUpload(asset);
             throw new ServiceException("文件上传失败，文件编号：" + asset.getAssetId());
         }
     }

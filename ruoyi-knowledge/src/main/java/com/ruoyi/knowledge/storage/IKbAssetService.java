@@ -7,7 +7,9 @@ import org.springframework.web.multipart.MultipartFile;
 public interface IKbAssetService {
     record Preview(String url, int expiresInSeconds, String contentType) { }
     KbAsset getAsset(Long assetId);
+    KbAsset findOwnUpload(String externalKey);
     KbAsset requireReady(Long assetId);
+    KbAsset requireOriginal(Long assetId);
     KbAsset upload(MultipartFile file, String purpose, String testRunId);
     KbAsset upload(MultipartFile file, String purpose, String testRunId, String idempotencyKey);
     KbAsset uploadBytes(byte[] bytes, String originalName, String contentType, String purpose, String testRunId);

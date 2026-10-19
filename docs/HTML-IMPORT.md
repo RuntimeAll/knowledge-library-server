@@ -1,5 +1,9 @@
 # 知识库 HTML 交换协议 v1
 
+Agent 的统一主入口已为 `POST /knowledge/import/records`，直接填写 JSON。
+完整口径、九种粗粒度题型与图片资产规则见 [统一 JSON 录入说明](../../docs/QUESTION-INTAKE.md)。
+本页保留 HTML 交换格式，供旧资料适配与页面导入使用。导出 ZIP 同时包含可编辑回流的 `records.json`。
+
 HTTP 均使用若依 Bearer token；导入和资产结果在 `AjaxResult.data`，导出返回 ZIP 字节。
 
 ## 导入
@@ -64,6 +68,6 @@ ZIP 包含 `index.html`、`questions/<id>.html`、`manifest.json`、`assets/` �
 
 若中断发生在 `RECEIVING`，尚未传到服务器的文件无法从远端重建，应携原文件、resources、原sourceId和相同idempotencyKey再次POST `/html`，已接收资源会复用。输入资产处于未知的 `UPLOADING` 时需先核对其精确对象状态，不可用新文件覆盖未知结果。旧版本遗留且未记录资源映射的PROCESSING批次同样需原请求重新提交，不能宣称可无文件恢复。
 
-CLI：`python scripts/knowledge-client.py resume BATCH_ID --receipt .runtime/resumed.json --run-id ORIGINAL_TEST_RUN`。凭据只取进程环境 `KB_USERNAME` / `KB_PASSWORD`；正式非测试批次省略run-id。保持同一创建账号。
+CLI：`python tools/knowledge-client.py resume BATCH_ID --receipt .runtime/resumed.json --run-id ORIGINAL_TEST_RUN`。凭据只取进程环境 `KB_USERNAME` / `KB_PASSWORD`；正式非测试批次省略run-id。保持同一创建账号。
 
 测试清理先按已核对batchIds删除 `kb_import_resource`、逐题回执和批次，再处理精确资产ID及对象版本，不能仅凭路径前缀批量删除。已删除题目的稳定外部键保留删除语义，旧请求不会自动复活题目；确需重新新建时使用新clientKey。

@@ -12,7 +12,7 @@ public interface KbSourceMapper {
 
     KbSource lockById(Long id);
 
-    List<KbSource> selectList(KbSource query);
+    List<KbSource> selectList(com.ruoyi.knowledge.catalog.KbCatalogQuery query);
 
     int insert(KbSource entity);
 

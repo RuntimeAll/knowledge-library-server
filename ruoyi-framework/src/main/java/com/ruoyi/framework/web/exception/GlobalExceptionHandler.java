@@ -29,6 +29,13 @@ public class GlobalExceptionHandler
 {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public AjaxResult handleIntegrityConflict(org.springframework.dao.DataIntegrityViolationException e, HttpServletRequest request)
+    {
+        log.warn("请求地址'{}',数据完整性约束冲突", request.getRequestURI());
+        return AjaxResult.error(409, "记录重复或仍被业务引用，请刷新并核对关联后重试");
+    }
+
     /**
      * 权限校验异常
      */

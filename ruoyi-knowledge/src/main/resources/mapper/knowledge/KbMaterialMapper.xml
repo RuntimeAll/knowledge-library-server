@@ -36,11 +36,11 @@
     <delete id="deleteReferences">DELETE FROM kb_material_reference_source WHERE material_id=#{id}</delete>
     <insert id="insertItem">INSERT INTO kb_material_item(material_id,question_id,seq) VALUES(#{id},#{questionId},#{seq})</insert>
     <insert id="insertReference">INSERT INTO kb_material_reference_source(material_id,source_id,note) VALUES(#{id},#{ref.sourceId},#{ref.note})</insert>
-    <select id="countProducts" resultType="long">SELECT COUNT(*) FROM kb_product WHERE material_id=#{id}</select>
+    <select id="countProducts" resultType="long">SELECT (SELECT COUNT(*) FROM kb_product WHERE material_id=#{id})+(SELECT COUNT(*) FROM kb_render_job WHERE material_id=#{id})</select>
     <select id="realInSources" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
-        JOIN kb_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
-        WHERE q.id=#{questionId} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        JOIN kb_verified_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
+        WHERE q.id=#{questionId} AND q.content_kind='EXERCISE' AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
         AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash AND qs.source_id IN
         <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
         )
@@ -48,9 +48,9 @@
     <select id="selectVerifiedOccurrenceIdForUpdate" resultType="long">
         SELECT qs.id FROM kb_question_source qs
         JOIN kb_source s ON s.id=qs.source_id
-        JOIN kb_exam_source e ON e.source_id=qs.source_id
+        JOIN kb_verified_exam_source e ON e.source_id=qs.source_id
         JOIN kb_question q ON q.id=qs.question_id
-        WHERE q.id=#{questionId} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        WHERE q.id=#{questionId} AND q.content_kind='EXERCISE' AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
         AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash
         AND qs.source_id IN
         <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
@@ -78,9 +78,9 @@
                            #{point.kpId} AS kpId, #{point.kpName} AS kpName
                     FROM kb_question_source qs
                     JOIN kb_source s ON s.id=qs.source_id
-                    JOIN kb_exam_source e ON e.source_id=s.id
+                    JOIN kb_verified_exam_source e ON e.source_id=s.id
                     JOIN kb_question q ON q.id=qs.question_id
-                    WHERE s.source_kind='EXAM' AND s.extraction_status != 'ORIGINAL_ONLY'
+                    WHERE q.content_kind='EXERCISE' AND s.source_kind='EXAM' AND s.extraction_status != 'ORIGINAL_ONLY'
                       AND e.authenticity_status='VERIFIED' AND qs.match_status='VERIFIED'
                       AND qs.matched_stem_hash=q.stem_hash
                       AND q.id IN
@@ -115,13 +115,13 @@
         <if test="pointIds == null or pointIds.size() == 0">WHEN 1=1 THEN 'NO_KNOWLEDGE_POINTS'</if>
                 WHEN NOT EXISTS (
                     SELECT 1 FROM kb_question_source qs JOIN kb_question q ON q.id=qs.question_id
-                    WHERE qs.source_id=s.id AND qs.match_status='VERIFIED'
+                    WHERE qs.source_id=s.id AND q.content_kind='EXERCISE' AND qs.match_status='VERIFIED'
                     AND qs.matched_stem_hash=q.stem_hash
                 ) THEN 'NO_VERIFIED_QUESTIONS'
                 WHEN s.extraction_status='PARTIAL' THEN 'COMPARED_PARTIAL'
                 ELSE 'COMPARED_EXTRACTED'
             END AS comparisonStatus
-        FROM kb_source s LEFT JOIN kb_exam_source e ON e.source_id=s.id
+        FROM kb_source s LEFT JOIN kb_verified_exam_source e ON e.source_id=s.id
         WHERE 1=1
         <include refid="comparisonSourceFilter"/>
         ORDER BY s.id LIMIT #{limit} OFFSET #{offset}

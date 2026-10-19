@@ -77,6 +77,11 @@ public class KbImportItemWorker {
             question.setTitle(question.getStemText().isBlank() ? "图形题" : question.getStemText().substring(0, Math.min(120, question.getStemText().length())));
         }
         if (meta.subject() != null) { question.setSubject(meta.subject()); }
+        if (meta.contentKind() != null) { question.setContentKind(meta.contentKind()); }
+        if (meta.layoutMode() != null) { question.setLayoutMode(meta.layoutMode()); }
+        if (meta.unitKind() != null) { question.setUnitKind(meta.unitKind()); }
+        if (meta.paginationMode() != null) { question.setPaginationMode(meta.paginationMode()); }
+        if (meta.layoutNote() != null) { question.setLayoutNote(meta.layoutNote()); }
         if (meta.questionType() != null) { question.setQuestionType(meta.questionType()); }
         if (meta.difficulty() != null) { question.setDifficulty(meta.difficulty()); }
         if (meta.kpIds() != null) { question.setKpIds(meta.kpIds()); }

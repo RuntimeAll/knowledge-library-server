@@ -12,6 +12,8 @@
         <result property="previousProductId" column="previous_product_id"/>
         <result property="rootProductId" column="root_product_id"/>
         <result property="versionNo" column="version_no"/>
+        <result property="renderJobId" column="render_job_id"/>
+        <result property="renderOutputKey" column="render_output_key"/>
         <result property="rowVersion" column="row_version"/>
         <result property="createBy" column="create_by"/>
         <result property="createTime" column="create_time"/>
@@ -22,15 +24,36 @@
     <select id="selectById" resultMap="result">SELECT * FROM kb_product WHERE id=#{id}</select>
     <select id="lockById" resultMap="result">SELECT * FROM kb_product WHERE id=#{id} FOR UPDATE</select>
     <select id="selectList" resultMap="result">
-        SELECT * FROM kb_product
+        SELECT r.* FROM kb_product r LEFT JOIN kb_product_profile p ON p.product_id=r.id
         <where>
-            <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
-            <if test="rootProductId != null">AND root_product_id=#{rootProductId}</if>
-            <if test="materialId != null">AND material_id=#{materialId}</if>
-        </where>
-         ORDER BY id DESC
+            <if test="title != null and title != ''">AND r.title LIKE CONCAT('%',#{title},'%')</if>
+            <if test="subject != null and subject != ''">AND p.subject=#{subject}</if>
+            <if test="resourceType != null and resourceType != ''">AND COALESCE(p.resource_type,'UNKNOWN')=#{resourceType}</if>
+            <if test="catalogStatus != null and catalogStatus != ''">AND COALESCE(p.catalog_status,'DRAFT')=#{catalogStatus}</if>
+            <if test="audienceRole != null and audienceRole != ''">AND p.audience_role=#{audienceRole}</if>
+            <if test="provenanceStatus != null and provenanceStatus != ''">AND COALESCE(p.provenance_status,'UNKNOWN')=#{provenanceStatus}</if>
+            <if test="rootProductId != null and rootProductId != ''">AND r.root_product_id=#{rootProductId}</if>
+            <if test="materialId != null and materialId != ''">AND r.material_id=#{materialId}</if>
+            <if test="historyMode == 'LATEST'">AND NOT EXISTS(SELECT 1 FROM kb_product newer WHERE newer.root_product_id=r.root_product_id AND newer.version_no &gt; r.version_no)</if>
+            <if test="yearField != null">
+             <if test="yearFrom != null">AND <choose><when test="yearField == 'publishedYear'">p.published_year</when><when test="yearField == 'preparedYear'">p.prepared_year</when><otherwise>NULL</otherwise></choose> &gt;= #{yearFrom}</if>
+             <if test="yearTo != null">AND <choose><when test="yearField == 'publishedYear'">p.published_year</when><when test="yearField == 'preparedYear'">p.prepared_year</when><otherwise>NULL</otherwise></choose> &lt;= #{yearTo}</if>
+            </if>
+            <if test="outlineId != null or outlineNodeId != null or textbookVersion != null or grade != null or term != null">
+              AND EXISTS(SELECT 1 FROM kb_product_outline_scope sc JOIN kb_outline o ON o.id=sc.outline_id WHERE sc.product_id=r.id
+               <if test="outlineId != null">AND sc.outline_id=#{outlineId}</if>
+               <if test="textbookVersion != null and textbookVersion != ''">AND o.textbook_version=#{textbookVersion}</if>
+               <if test="grade != null and grade != ''">AND o.grade=#{grade}</if>
+               <if test="term != null and term != ''">AND o.term=#{term}</if>
+               <if test="outlineNodeId != null">AND (sc.scope_kind='WHOLE_BOOK' OR (sc.scope_kind='CHAPTERS' AND EXISTS(SELECT 1 FROM kb_product_outline_scope_node sn WHERE sn.scope_id=sc.id AND (sn.node_id IN <foreach collection="chapterAncestorIds" item="n" open="(" separator="," close=")">#{n}</foreach>
+                <if test="chapterMatch == 'SUBTREE'">OR sn.node_id IN <foreach collection="chapterTargetIds" item="n" open="(" separator="," close=")">#{n}</foreach></if>))))</if>
+              )
+            </if>
+            <if test="regionCodes != null and regionCodes.size > 0">AND EXISTS(SELECT 1 FROM kb_product_region rg WHERE rg.product_id=r.id AND rg.region_role=#{regionRole} AND rg.region_code IN <foreach collection="regionCodes" item="code" open="(" separator="," close=")">#{code}</foreach>)</if>
+            <if test="kpId != null"><choose><when test="coverageMode == 'ACTUAL'">AND ((r.render_job_id IS NULL AND EXISTS(SELECT 1 FROM kb_product_question l JOIN kb_question_kp qk ON qk.question_id=l.question_id WHERE l.product_id=r.id AND qk.kp_id=#{kpId})) OR (r.render_job_id IS NOT NULL AND EXISTS(SELECT 1 FROM JSON_TABLE(r.snapshot_json, '$.declaredKpIds[*]' COLUMNS(kp_id BIGINT PATH '$')) frozen WHERE frozen.kp_id=#{kpId})))</when><otherwise>AND EXISTS(SELECT 1 FROM kb_product_kp dk WHERE dk.product_id=r.id AND dk.kp_id=#{kpId})</otherwise></choose></if>
+        </where> ORDER BY r.id DESC
     </select>
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_product (title,snapshot_json,material_id,asset_id,previous_product_id,root_product_id,version_no,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{snapshotJson},#{materialId},#{assetId},#{previousProductId},#{rootProductId},#{versionNo},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_product (title,snapshot_json,material_id,asset_id,previous_product_id,root_product_id,version_no,row_version,create_by,create_time,update_by,update_time,remark,render_job_id,render_output_key) VALUES (#{title},#{snapshotJson},#{materialId},#{assetId},#{previousProductId},#{rootProductId},#{versionNo},0,#{createBy},NOW(),#{createBy},NOW(),#{remark},#{renderJobId},#{renderOutputKey})</insert>
     <update id="update">UPDATE kb_product SET title=#{title},material_id=#{materialId},asset_id=#{assetId},previous_product_id=#{previousProductId},root_product_id=#{rootProductId},version_no=#{versionNo},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_product WHERE id=#{id}</delete>
     <update id="initializeRoot">UPDATE kb_product SET root_product_id=id WHERE id=#{id}</update>
@@ -39,5 +62,5 @@
         WHERE root_product_id=#{rootId}
         ORDER BY version_no DESC LIMIT 1 FOR UPDATE
     </select>
-    <select id="countNewerVersions" resultType="long">SELECT COUNT(*) FROM kb_product WHERE previous_product_id=#{id}</select>
+    <select id="countNewerVersions" resultType="long">SELECT (SELECT COUNT(*) FROM kb_product WHERE previous_product_id=#{id})+(SELECT COUNT(*) FROM kb_render_job j, JSON_TABLE(j.config_snapshot_json, '$.request.previousOutputs[*]' COLUMNS(product_id BIGINT PATH '$.productId')) r WHERE r.product_id=#{id})</select>
 </mapper>

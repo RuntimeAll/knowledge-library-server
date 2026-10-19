@@ -5,7 +5,7 @@
 <mapper namespace="com.ruoyi.knowledge.mapper.KbOccurrenceMapper">
     <resultMap id="result" type="com.ruoyi.knowledge.domain.KbOccurrence">
         <result property="id" column="id"/>
-        <result property="questionId" column="question_id"/>
+        <result property="questionId" column="question_id"/><result property="sourceTitle" column="source_title"/>
         <result property="sourceId" column="source_id"/>
         <result property="questionNo" column="question_no"/>
         <result property="pageFrom" column="page_from"/>
@@ -41,4 +41,9 @@
         <if test="id != null">AND id != #{id}</if>
     </select>
     <select id="selectAncestorSources" resultMap="result">WITH RECURSIVE ancestors(id) AS (SELECT parent_question_id FROM kb_question_derivation WHERE child_question_id=#{id} UNION DISTINCT SELECT d.parent_question_id FROM kb_question_derivation d JOIN ancestors a ON a.id=d.child_question_id) SELECT qs.* FROM kb_question_source qs JOIN ancestors a ON a.id=qs.question_id</select>
+    <select id="selectCatalogList" resultMap="result">SELECT qs.* FROM kb_question_source qs <where><if test="questionId != null">AND qs.question_id=#{questionId}</if><if test="sourceId != null">AND qs.source_id=#{sourceId}</if><if test="matchStatus != null and matchStatus != ''">AND qs.match_status=#{matchStatus}</if><if test="collectionKind != null and collectionKind != ''">AND EXISTS(SELECT 1 FROM kb_occurrence_collection c WHERE c.occurrence_id=qs.id AND c.collection_kind=#{collectionKind})</if></where> ORDER BY qs.id DESC</select>
+    <select id="matchedExam" resultMap="result">SELECT qs.*,s.title AS source_title FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id JOIN kb_verified_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id WHERE qs.question_id=#{questionId} AND q.content_kind='EXERCISE' AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash
+      <if test="query != null"><if test="query.sourceId != null and query.verifiedOnly == true">AND qs.source_id=#{query.sourceId}</if><if test="query.examSourceId != null">AND qs.source_id=#{query.examSourceId}</if><if test="query.examPurpose != null">AND e.exam_type=#{query.examPurpose}</if><if test="query.examYear != null">AND e.exam_year=#{query.examYear}</if><if test="query.examRegionCode != null">AND EXISTS(SELECT 1 FROM kb_source_region rg WHERE rg.source_id=qs.source_id AND rg.region_role='EXAM_SCOPE' AND rg.region_code IN <foreach collection="query.examRegionCodes" item="code" open="(" separator="," close=")">#{code}</foreach>)</if></if> ORDER BY qs.id
+    </select>
+    <select id="matchedWrong" resultMap="result">SELECT qs.*,s.title AS source_title FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id JOIN kb_occurrence_collection c ON c.occurrence_id=qs.id AND c.collection_kind='WRONG_QUESTION' WHERE qs.question_id=#{questionId}<if test="query != null and query.wrongSourceId != null">AND qs.source_id=#{query.wrongSourceId}</if> ORDER BY qs.id</select>
 </mapper>

@@ -170,4 +170,7 @@ public class KbOccurrence extends BaseEntity {
     public void setQuestionTitle(String questionTitle) {
         this.questionTitle = questionTitle;
     }
+    private java.util.List<com.ruoyi.knowledge.catalog.KbOccurrenceCollection> collections;
+    public java.util.List<com.ruoyi.knowledge.catalog.KbOccurrenceCollection> getCollections() { return collections; }
+    public void setCollections(java.util.List<com.ruoyi.knowledge.catalog.KbOccurrenceCollection> value) { collections=value; }
 }

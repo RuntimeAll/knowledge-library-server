@@ -19,6 +19,10 @@ public class KbAsset extends BaseEntity {
     private String status;
     private String failureMessage;
     private String testRunId;
+    private String uploadToken;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getUploadToken() { return uploadToken; }
+    public void setUploadToken(String uploadToken) { this.uploadToken = uploadToken; }
 
     @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
     public Long getAssetId() { return assetId; }

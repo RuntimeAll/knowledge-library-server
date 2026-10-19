@@ -9,7 +9,7 @@ public interface KbProductMapper {
 
     KbProduct lockById(Long id);
 
-    List<KbProduct> selectList(KbProduct query);
+    List<KbProduct> selectList(com.ruoyi.knowledge.catalog.KbCatalogQuery query);
 
     int insert(KbProduct entity);
 

@@ -36,6 +36,7 @@ public interface KbQuestionMapper {
     long countReferences(Long id);
 
     boolean isRealExam(Long id);
+    List<String> examRegionCodes(String code);
 
     int deleteIncomingDerivations(Long id);
 

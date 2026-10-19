@@ -45,3 +45,10 @@ nbdist/
 !*/build/*.java
 !*/build/*.html
 !*/build/*.xml
+
+# Local runtime and credentials must never enter this source repository.
+.runtime/
+**/application-local.yml
+**/application-local.yaml
+.env.local
+.env.*.local

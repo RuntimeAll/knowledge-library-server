@@ -14,6 +14,12 @@
         <result property="hasImage" column="has_image"/>
         <result property="status" column="status"/>
         <result property="subject" column="subject"/>
+        <result property="contentKind" column="content_kind"/>
+        <result property="layoutMode" column="layout_mode"/>
+        <result property="unitKind" column="unit_kind"/>
+        <result property="paginationMode" column="pagination_mode"/>
+        <result property="layoutNote" column="layout_note"/>
+        <result property="itemCount" column="item_count"/>
         <result property="questionType" column="question_type"/>
         <result property="difficulty" column="difficulty"/>
         <result property="creationKind" column="creation_kind"/>
@@ -39,6 +45,10 @@
             </if>
             <if test="status != null and status != ''">AND status=#{status}</if>
             <if test="subject != null and subject != ''">AND subject=#{subject}</if>
+            <if test="contentKind != null and contentKind != ''">AND content_kind=#{contentKind}</if>
+            <if test="layoutMode != null and layoutMode != ''">AND layout_mode=#{layoutMode}</if>
+            <if test="unitKind != null and unitKind != ''">AND unit_kind=#{unitKind}</if>
+            <if test="paginationMode != null and paginationMode != ''">AND pagination_mode=#{paginationMode}</if>
             <if test="questionType != null and questionType != ''">AND question_type=#{questionType}</if>
             <if test="difficulty != null and difficulty != ''">AND difficulty=#{difficulty}</if>
             <if test="creationKind != null and creationKind != ''">AND creation_kind=#{creationKind}</if>
@@ -53,11 +63,24 @@
                 </choose>
             </if>
             <if test="sourceId != null">AND EXISTS(SELECT 1 FROM kb_question_source qs WHERE qs.question_id=kb_question.id AND qs.source_id=#{sourceId})</if>
+            <if test="verifiedOnly == true or examSourceId != null or examPurpose != null or examYear != null or examRegionCode != null">
+              AND EXISTS(SELECT 1 FROM kb_question_source vqs JOIN kb_source vs ON vs.id=vqs.source_id JOIN kb_exam_source ve ON ve.source_id=vqs.source_id
+                WHERE vqs.question_id=kb_question.id AND vs.source_kind='EXAM'
+                <if test="verifiedOnly == true">AND kb_question.content_kind='EXERCISE' AND vqs.match_status='VERIFIED' AND vqs.matched_stem_hash=kb_question.stem_hash AND EXISTS(SELECT 1 FROM kb_verified_exam_source valid WHERE valid.source_id=ve.source_id)
+                  <if test="sourceId != null">AND vqs.source_id=#{sourceId}</if></if>
+                <if test="examSourceId != null">AND vqs.source_id=#{examSourceId}</if>
+                <if test="examPurpose != null">AND ve.exam_type=#{examPurpose}</if><if test="examYear != null">AND ve.exam_year=#{examYear}</if>
+                <if test="examRegionCode != null">AND EXISTS(SELECT 1 FROM kb_source_region rg WHERE rg.source_id=vqs.source_id AND rg.region_role='EXAM_SCOPE' AND rg.region_code IN <foreach collection="examRegionCodes" item="code" open="(" separator="," close=")">#{code}</foreach>)</if>
+              )
+            </if>
+            <if test="wrongOnly == true or wrongSourceId != null">AND EXISTS(SELECT 1 FROM kb_question_source wqs JOIN kb_occurrence_collection wc ON wc.occurrence_id=wqs.id AND wc.collection_kind='WRONG_QUESTION' WHERE wqs.question_id=kb_question.id <if test="wrongSourceId != null">AND wqs.source_id=#{wrongSourceId}</if>)</if>
+            <if test="outlineId != null">AND EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_kp_outline ko ON ko.kp_id=qk.kp_id WHERE qk.question_id=kb_question.id AND ko.outline_id=#{outlineId})</if>
+            <if test="outlineNodeId != null">AND EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_outline_node_kp nk ON nk.kp_id=qk.kp_id WHERE qk.question_id=kb_question.id AND nk.node_id=#{outlineNodeId})</if>
             <if test="sourceIds != null">
                 <choose>
                     <when test="sourceIds.size() &gt; 0">
                         AND EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
-                        LEFT JOIN kb_exam_source e ON e.source_id=qs.source_id WHERE qs.question_id=kb_question.id AND qs.source_id IN
+                        LEFT JOIN kb_verified_exam_source e ON e.source_id=qs.source_id WHERE qs.question_id=kb_question.id AND qs.source_id IN
                         <foreach collection="sourceIds" item="sid" open="(" close=")" separator=",">#{sid}</foreach>
                         <if test="verifiedOnly == true">AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED' AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=kb_question.stem_hash</if>
                         )
@@ -68,8 +91,8 @@
         </where>
          ORDER BY id DESC
     </select>
-    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_question (title,stem_html,answer_html,analysis_html,stem_text,stem_hash,has_image,status,subject,question_type,difficulty,creation_kind,source_note,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{stemHtml},#{answerHtml},#{analysisHtml},#{stemText},#{stemHash},#{hasImage},#{status},#{subject},#{questionType},#{difficulty},#{creationKind},#{sourceNote},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
-    <update id="update">UPDATE kb_question SET title=#{title},stem_html=#{stemHtml},answer_html=#{answerHtml},analysis_html=#{analysisHtml},stem_text=#{stemText},stem_hash=#{stemHash},has_image=#{hasImage},status=#{status},subject=#{subject},question_type=#{questionType},difficulty=#{difficulty},creation_kind=#{creationKind},source_note=#{sourceNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_question (title,stem_html,answer_html,analysis_html,stem_text,stem_hash,has_image,status,subject,content_kind,layout_mode,unit_kind,pagination_mode,layout_note,item_count,question_type,difficulty,creation_kind,source_note,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{title},#{stemHtml},#{answerHtml},#{analysisHtml},#{stemText},#{stemHash},#{hasImage},#{status},#{subject},#{contentKind},#{layoutMode},#{unitKind},#{paginationMode},#{layoutNote},#{itemCount},#{questionType},#{difficulty},#{creationKind},#{sourceNote},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
+    <update id="update">UPDATE kb_question SET title=#{title},stem_html=#{stemHtml},answer_html=#{answerHtml},analysis_html=#{analysisHtml},stem_text=#{stemText},stem_hash=#{stemHash},has_image=#{hasImage},status=#{status},subject=#{subject},content_kind=#{contentKind},layout_mode=#{layoutMode},unit_kind=#{unitKind},pagination_mode=#{paginationMode},layout_note=#{layoutNote},item_count=#{itemCount},question_type=#{questionType},difficulty=#{difficulty},creation_kind=#{creationKind},source_note=#{sourceNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_question WHERE id=#{id}</delete>
     <select id="selectKpIds" resultType="long">SELECT kp_id FROM kb_question_kp WHERE question_id=#{id} ORDER BY kp_id</select>
     <select id="selectAssetIds" resultType="long">SELECT asset_id FROM kb_question_asset WHERE question_id=#{id} ORDER BY asset_id</select>
@@ -77,11 +100,11 @@
     <delete id="deleteAssets">DELETE FROM kb_question_asset WHERE question_id=#{id}</delete>
     <insert id="insertKp">INSERT INTO kb_question_kp(question_id,kp_id) VALUES(#{id},#{kpId})</insert>
     <insert id="insertAsset">INSERT INTO kb_question_asset(question_id,asset_id) VALUES(#{id},#{assetId})</insert>
-    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_material_item WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_source WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_derivation WHERE parent_question_id=#{id})</select>
+    <select id="countReferences" resultType="long">SELECT (SELECT COUNT(*) FROM kb_material_item WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_source WHERE question_id=#{id})+(SELECT COUNT(*) FROM kb_question_derivation WHERE parent_question_id=#{id}) + (SELECT COUNT(*) FROM kb_product_question WHERE question_id=#{id}) + (SELECT COUNT(*) FROM kb_render_job_item WHERE question_id=#{id})</select>
     <select id="isRealExam" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
-        JOIN kb_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
-        WHERE q.id=#{id} AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        JOIN kb_verified_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id
+        WHERE q.id=#{id} AND q.content_kind='EXERCISE' AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
         AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash)
     </select>
     <delete id="deleteIncomingDerivations">DELETE FROM kb_question_derivation WHERE child_question_id=#{id}</delete>
@@ -98,4 +121,5 @@
     </resultMap>
     <select id="selectParents" resultMap="derivation">SELECT d.*,q.title AS parent_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.parent_question_id WHERE child_question_id=#{id} ORDER BY is_primary DESC,parent_question_id</select>
     <select id="selectChildren" resultMap="derivation">SELECT d.*,q.title AS child_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.child_question_id WHERE parent_question_id=#{id} ORDER BY child_question_id</select>
+    <select id="examRegionCodes" resultType="string">WITH RECURSIVE region_tree AS (SELECT region_code FROM kb_region WHERE region_code=#{code} UNION ALL SELECT r.region_code FROM kb_region r JOIN region_tree t ON r.parent_code=t.region_code) SELECT region_code FROM region_tree</select>
 </mapper>

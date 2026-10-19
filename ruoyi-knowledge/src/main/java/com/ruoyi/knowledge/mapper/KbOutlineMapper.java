@@ -18,4 +18,7 @@ public interface KbOutlineMapper {
     int deleteById(Long id);
 
     long countNodes(Long id);
+    List<String> selectTextbookVersions();
+    long countCatalogReferences(Long id);
+    long countNodeCatalogReferences(Long id);
 }

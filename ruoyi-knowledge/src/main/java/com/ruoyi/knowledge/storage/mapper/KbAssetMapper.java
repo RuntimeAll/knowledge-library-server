@@ -8,7 +8,8 @@ public interface KbAssetMapper {
     KbAsset selectById(Long assetId);
     KbAsset selectByIdForUpdate(Long assetId);
     KbAsset selectByExternalKey(@Param("createBy") String createBy, @Param("externalKey") String externalKey);
-    int claimRetry(Long assetId);
+    int claimRetry(@Param("assetId") Long assetId, @Param("uploadToken") String uploadToken);
+    int finishUpload(KbAsset asset);
     List<KbAsset> selectByRunId(String testRunId);
     int insert(KbAsset asset);
     int updateState(KbAsset asset);

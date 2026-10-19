@@ -27,9 +27,12 @@ import java.io.InputStream;
 @RequestMapping("/knowledge/asset")
 public class AssetController extends BaseController {
     private final IKbAssetService assets;
+    private final com.ruoyi.knowledge.layout.IKbRenderService renders;
 
-    public AssetController(IKbAssetService assets) {
+    public AssetController(
+            IKbAssetService assets, com.ruoyi.knowledge.layout.IKbRenderService renders) {
         this.assets = assets;
+        this.renders = renders;
     }
 
     @PostMapping("/upload")
@@ -43,6 +46,12 @@ public class AssetController extends BaseController {
         return success(assets.upload(file, purpose, testRunId, idempotencyKey));
     }
 
+    @GetMapping("/by-key")
+    @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
+    public AjaxResult ownUpload(@RequestParam String externalKey) {
+        return success(assets.findOwnUpload(externalKey));
+    }
+
     @GetMapping("/{assetId}")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
     public AjaxResult metadata(@PathVariable Long assetId) {
@@ -52,6 +61,7 @@ public class AssetController extends BaseController {
     @GetMapping("/{assetId}/preview")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
     public AjaxResult preview(@PathVariable Long assetId) {
+        renders.assertAssetDownload(assetId);
         return success(assets.preview(assetId));
     }
 
@@ -59,6 +69,7 @@ public class AssetController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:asset:download')")
     public void download(@PathVariable Long assetId, HttpServletResponse response)
             throws Exception {
+        renders.assertAssetDownload(assetId);
         KbAsset asset = assets.requireReady(assetId);
         // Do not render user-supplied originals in the application origin.
         response.setContentType("application/octet-stream");

@@ -9,6 +9,7 @@ import static com.ruoyi.knowledge.service.impl.KnowledgeRules.unreferenced;
 import static com.ruoyi.knowledge.service.impl.KnowledgeRules.version;
 
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.knowledge.catalog.*;
 import com.ruoyi.knowledge.domain.KbOccurrence;
 import com.ruoyi.knowledge.domain.KbQuestion;
 import com.ruoyi.knowledge.domain.KbSource;
@@ -16,6 +17,7 @@ import com.ruoyi.knowledge.domain.KbSourceAttachment;
 import com.ruoyi.knowledge.mapper.KbOccurrenceMapper;
 import com.ruoyi.knowledge.mapper.KbQuestionMapper;
 import com.ruoyi.knowledge.mapper.KbSourceMapper;
+import com.ruoyi.knowledge.service.IKbCatalogService;
 import com.ruoyi.knowledge.service.IKbSourceService;
 import com.ruoyi.knowledge.storage.IKbAssetService;
 
@@ -37,22 +39,48 @@ public class KbSourceServiceImpl implements IKbSourceService {
     private final KbQuestionMapper questions;
     private final IKbAssetService assets;
     private final KnowledgeDictionary dictionary;
+    private final IKbCatalogService catalog;
 
     public KbSourceServiceImpl(
             KbSourceMapper mapper,
             KbOccurrenceMapper occurrences,
             KbQuestionMapper questions,
             IKbAssetService assets,
-            KnowledgeDictionary dictionary) {
+            KnowledgeDictionary dictionary,
+            IKbCatalogService catalog) {
         this.mapper = mapper;
         this.occurrences = occurrences;
         this.questions = questions;
         this.assets = assets;
         this.dictionary = dictionary;
+        this.catalog = catalog;
     }
 
-    public List<KbSource> list(KbSource query) {
-        return mapper.selectList(query);
+    public void prepareQuery(KbCatalogQuery query) {
+        catalog.prepareQuery("SOURCE", query);
+    }
+
+    public List<KbSource> list(KbCatalogQuery query) {
+        List<KbSource> page = mapper.selectList(query);
+        for (int i = 0; i < page.size(); i++) {
+            KbSource row = get(page.get(i).getId());
+            row.setMatchReasons(catalogMatches(query));
+            page.set(i, row);
+        }
+        return page;
+    }
+
+    private List<String> catalogMatches(KbCatalogQuery query) {
+        List<String> reasons = new ArrayList<>();
+        if (query.getOutlineId() != null
+                || query.getTextbookVersion() != null
+                || query.getGrade() != null
+                || query.getTerm() != null) reasons.add("命中资料直接声明的教材范围");
+        if (query.getKpId() != null)
+            reasons.add("ACTUAL".equals(query.getCoverageMode()) ? "命中已录入题目的实际考点" : "命中文件声明考点");
+        if (query.getRegionCode() != null) reasons.add("命中指定角色区域");
+        if (query.getYearField() != null) reasons.add("命中指定年份字段：" + query.getYearField());
+        return reasons;
     }
 
     public KbSource get(Long id) {
@@ -74,27 +102,42 @@ public class KbSourceServiceImpl implements IKbSourceService {
                         .map(KbSourceAttachment::getAssetId)
                         .distinct()
                         .toList());
+        catalog.enrich("SOURCE", id, data);
+        if (data.getProfile() != null) data.setSubject(data.getProfile().getSubject());
         return data;
     }
 
     @Transactional
     public KbSource create(KbSource data) {
-        validate(data);
+        catalog.prepareSource(data, null);
+        validate(data, null);
         mapper.insert(data);
         saveRelations(data);
+        catalog.persist("SOURCE", data.getId(), data, data.getCreateBy(), true);
         return get(data.getId());
     }
 
     @Transactional
     public KbSource update(KbSource data) {
-        KbSource old = found(mapper.lockById(data.getId()));
+        found(mapper.lockById(data.getId()));
+        KbSource old = get(data.getId());
         version(data.getRowVersion(), old.getRowVersion());
-        validate(data);
+        if (data.getTitle() == null) data.setTitle(old.getTitle());
+        if (data.getExtractionStatus() == null) data.setExtractionStatus(old.getExtractionStatus());
+        if (data.getOriginUrl() == null) data.setOriginUrl(old.getOriginUrl());
+        if (data.getOriginNote() == null) data.setOriginNote(old.getOriginNote());
+        if (data.getAttachments() == null && data.getAssetIds() == null) {
+            data.setAttachments(old.getAttachments());
+            data.setAssetIds(old.getAssetIds());
+        }
+        catalog.prepareSource(data, old);
+        validate(data, old);
         if ("ORIGINAL_ONLY".equals(data.getExtractionStatus())
                 && mapper.countOccurrences(data.getId()) > 0)
             throw new ServiceException("已有题目出处，不能改成仅有原件", 409);
         changed(mapper.update(data));
         saveRelations(data);
+        catalog.persist("SOURCE", data.getId(), data, data.getUpdateBy(), false);
         return get(data.getId());
     }
 
@@ -103,6 +146,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         for (Long id : values) {
             found(mapper.lockById(id));
             unreferenced(mapper.countReferences(id), "来源仍有题目出处或专项参考引用");
+            catalog.delete("SOURCE", id);
             mapper.deleteAttachments(id);
             mapper.deleteExam(id);
             mapper.deleteById(id);
@@ -149,10 +193,11 @@ public class KbSourceServiceImpl implements IKbSourceService {
     public void deleteOccurrence(Long id) {
         KbOccurrence data = found(occurrences.selectById(id));
         found(mapper.lockById(data.getSourceId()));
+        if (!catalog.collections(id).isEmpty()) throw new ServiceException("出处仍有收录用途，请先取消收录", 409);
         occurrences.deleteById(id);
     }
 
-    private void validate(KbSource data) {
+    private void validate(KbSource data, KbSource old) {
         data.setTitle(text(data.getTitle(), "来源标题", 300));
         data.setSourceKind(
                 choice(
@@ -170,9 +215,12 @@ public class KbSourceServiceImpl implements IKbSourceService {
                         "ORIGINAL_ONLY",
                         "PARTIAL",
                         "EXTRACTED"));
+        if (old == null || !Objects.equals(old.getSourceKind(), data.getSourceKind()))
+            dictionary.validate("kb_source_kind", data.getSourceKind(), "来源类型");
+        if (old == null || !Objects.equals(old.getExtractionStatus(), data.getExtractionStatus()))
+            dictionary.validate("kb_extraction_status", data.getExtractionStatus(), "抽题进度");
         if (!"EXAM".equals(data.getSourceKind())) {
-            if (hasText(data.getSubject())
-                    || hasText(data.getGrade())
+            if (hasText(data.getGrade())
                     || hasText(data.getExamType())
                     || data.getExamYear() != null
                     || hasText(data.getSchoolName())
@@ -192,10 +240,15 @@ public class KbSourceServiceImpl implements IKbSourceService {
                         "UNVERIFIED",
                         "VERIFIED",
                         "REJECTED"));
+        if (old == null
+                || !Objects.equals(old.getAuthenticityStatus(), data.getAuthenticityStatus()))
+            dictionary.validate("kb_verification_status", data.getAuthenticityStatus(), "来源核实状态");
         if (data.getExamYear() != null && (data.getExamYear() < 1 || data.getExamYear() > 9999))
             throw new ServiceException("年份无效", 400);
-        dictionary.validate("kb_subject", data.getSubject(), "学科");
-        dictionary.validate("kb_exam_type", data.getExamType(), "考试类型");
+        if (old == null || !Objects.equals(old.getSubject(), data.getSubject()))
+            dictionary.validate("kb_subject", data.getSubject(), "学科");
+        if (old == null || !Objects.equals(old.getExamType(), data.getExamType()))
+            dictionary.validate("kb_exam_type", data.getExamType(), "考试类型");
     }
 
     private boolean hasText(String value) {
@@ -204,7 +257,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
 
     private void saveRelations(KbSource data) {
         if ("EXAM".equals(data.getSourceKind())) mapper.saveExam(data);
-        else mapper.deleteExam(data.getId());
+        else catalog.clearExam(data.getId());
         if (data.getAssetIds() == null && data.getAttachments() == null) return;
         List<KbSourceAttachment> links = new ArrayList<>();
         if (data.getAttachments() != null) links.addAll(data.getAttachments());
@@ -218,9 +271,10 @@ public class KbSourceServiceImpl implements IKbSourceService {
         Set<Long> wanted = new HashSet<>();
         Set<String> keys = new HashSet<>();
         for (KbSourceAttachment link : links) {
-            assets.requireReady(link.getAssetId());
+            assets.requireOriginal(link.getAssetId());
             link.setSourceId(data.getId());
             link.setRole(choice(link.getRole(), "ORIGINAL", "ORIGINAL", "EXCERPT", "EVIDENCE"));
+            dictionary.validate("kb_attachment_role", link.getRole(), "附件角色");
             if (!keys.add(link.getAssetId() + ":" + link.getRole()))
                 throw new ServiceException("附件关联重复", 400);
             wanted.add(link.getAssetId());
@@ -228,7 +282,9 @@ public class KbSourceServiceImpl implements IKbSourceService {
         for (KbSourceAttachment old : mapper.selectAttachments(data.getId()))
             if (!wanted.contains(old.getAssetId()))
                 unreferenced(
-                        mapper.countAssetEvidence(data.getId(), old.getAssetId()), "附件仍被出处作为证据引用");
+                        mapper.countAssetEvidence(data.getId(), old.getAssetId())
+                                + catalog.countSourceEvidence(data.getId(), old.getAssetId()),
+                        "附件仍被出处作为证据引用");
         mapper.deleteAttachments(data.getId());
         links.forEach(mapper::insertAttachment);
     }
@@ -247,6 +303,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
             unreferenced(occurrences.countPosition(data), "该页码题号已有出处，请编辑原记录");
         data.setMatchStatus(
                 choice(data.getMatchStatus(), "UNVERIFIED", "UNVERIFIED", "VERIFIED", "REJECTED"));
+        dictionary.validate("kb_verification_status", data.getMatchStatus(), "出处核实状态");
         if (data.getEvidenceAssetId() != null) {
             boolean linked =
                     mapper.selectAttachments(data.getSourceId()).stream()
@@ -270,10 +327,62 @@ public class KbSourceServiceImpl implements IKbSourceService {
                         && data.getMatchedStemHash() != null;
         data.setStemMatches(matches);
         data.setIsRealExam(
-                "EXAM".equals(s.getSourceKind())
+                catalog.realExam(s)
+                        && q != null
+                        && !"KNOWLEDGE".equals(q.getContentKind())
                         && matches
                         && "VERIFIED".equals(data.getMatchStatus())
                         && "VERIFIED".equals(s.getAuthenticityStatus()));
+        data.setCollections(catalog.collections(data.getId()));
         return data;
+    }
+
+    @Transactional
+    public KbSource catalog(Long id, KbCatalogCommand command, String actor) {
+        KbSource input = new KbSource();
+        input.setId(id);
+        input.setRowVersion(command.getRowVersion());
+        input.setUpdateBy(actor);
+        copyCatalog(command, input);
+        return update(input);
+    }
+
+    private void copyCatalog(KbCatalogDocument from, KbCatalogDocument to) {
+        to.setProfile(from.getProfile());
+        to.setOutlineScopes(from.getOutlineScopes());
+        to.setDeclaredKpIds(from.getDeclaredKpIds());
+        to.setRegions(from.getRegions());
+        to.setExamDetail(from.getExamDetail());
+    }
+
+    @Transactional
+    public KbSource verifyExam(Long id, KbExamVerificationCommand command, String actor) {
+        found(mapper.lockById(id));
+        KbSource data = get(id);
+        version(command.getRowVersion(), data.getRowVersion());
+        catalog.verify(data, command, actor);
+        data.setUpdateBy(actor);
+        changed(mapper.update(data));
+        mapper.saveExam(data);
+        catalog.persist("SOURCE", id, data, actor, false);
+        return get(id);
+    }
+
+    public List<KbOccurrence> occurrenceList(KbOccurrenceQuery query) {
+        List<KbOccurrence> page = occurrences.selectCatalogList(query);
+        page.forEach(this::flags);
+        return page;
+    }
+
+    @Transactional
+    public KbOccurrence collections(Long id, KbCollectionsCommand command, String actor) {
+        KbOccurrence before = found(occurrences.selectById(id));
+        found(mapper.lockById(before.getSourceId()));
+        KbOccurrence data = found(occurrences.lockById(id));
+        version(command.getRowVersion(), data.getRowVersion());
+        catalog.saveCollections(data, command, actor);
+        data.setUpdateBy(actor);
+        changed(occurrences.update(data));
+        return flags(found(occurrences.selectById(id)));
     }
 }

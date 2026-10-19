@@ -31,7 +31,11 @@ public class KbSourceController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:source:list')")
     @GetMapping("/list")
-    public TableDataInfo list(KbSource query) {
+    public TableDataInfo list(
+            com.ruoyi.knowledge.catalog.KbCatalogQuery query,
+            jakarta.servlet.http.HttpServletRequest request) {
+        query.rejectUnknown(request.getParameterMap().keySet());
+        service.prepareQuery(query);
         startPage();
         return getDataTable(service.list(query));
     }
@@ -94,5 +98,23 @@ public class KbSourceController extends BaseController {
     public AjaxResult deleteOccurrence(@PathVariable Long id) {
         service.deleteOccurrence(id);
         return success();
+    }
+
+    @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
+    @Log(title = "资料描述", businessType = BusinessType.UPDATE)
+    @PutMapping("/{id}/catalog")
+    public AjaxResult catalog(
+            @PathVariable Long id,
+            @RequestBody com.ruoyi.knowledge.catalog.KbCatalogCommand command) {
+        return success(service.catalog(id, command, getUsername()));
+    }
+
+    @PreAuthorize("@ss.hasPermi('knowledge:source:verify')")
+    @Log(title = "考试来源核实", businessType = BusinessType.UPDATE)
+    @PutMapping("/{id}/exam-verification")
+    public AjaxResult verifyExam(
+            @PathVariable Long id,
+            @RequestBody com.ruoyi.knowledge.catalog.KbExamVerificationCommand command) {
+        return success(service.verifyExam(id, command, getUsername()));
     }
 }

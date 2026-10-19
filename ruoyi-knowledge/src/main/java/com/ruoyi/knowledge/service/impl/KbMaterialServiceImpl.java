@@ -42,6 +42,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
     private final KbSourceMapper sources;
     private final IKbSourceService sourceService;
     private final IKbKpService points;
+    private final KnowledgeDictionary dictionary;
 
     public KbMaterialServiceImpl(
             KbMaterialMapper mapper,
@@ -49,13 +50,14 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
             IKbQuestionService questions,
             KbSourceMapper sources,
             IKbSourceService sourceService,
-            IKbKpService points) {
+            IKbKpService points, KnowledgeDictionary dictionary) {
         this.mapper = mapper;
         this.questionMapper = questionMapper;
         this.questions = questions;
         this.sources = sources;
         this.sourceService = sourceService;
         this.points = points;
+        this.dictionary = dictionary;
     }
 
     public List<KbMaterial> list(KbMaterial query) {
@@ -120,6 +122,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
     private void validate(KbMaterial data) {
         data.setTitle(text(data.getTitle(), "专项标题", 300));
         data.setSelectionMode(choice(data.getSelectionMode(), "MIXED", "MIXED", "EXAM_ONLY"));
+        dictionary.validate("kb_selection_mode", data.getSelectionMode(), "选题模式");
         data.setQuestionIds(ids(data.getQuestionIds()));
         if (data.getQuestionIds().size() > 500) {
             throw new ServiceException("单份专项最多保存500道题目", 400);

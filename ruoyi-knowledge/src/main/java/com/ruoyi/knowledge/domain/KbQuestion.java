@@ -16,6 +16,12 @@ public class KbQuestion extends BaseEntity {
     private String stemHash;
     private String status;
     private String subject;
+    private String contentKind;
+    private String layoutMode;
+    private String unitKind;
+    private String paginationMode;
+    private String layoutNote;
+    private Integer itemCount;
     private String questionType;
     private String difficulty;
     private String creationKind;
@@ -25,6 +31,17 @@ public class KbQuestion extends BaseEntity {
     private List<Long> kpIds;
     private List<Long> assetIds;
     private List<String> readinessReasons;
+
+    public String getLayoutMode() { return layoutMode; }
+    public void setLayoutMode(String layoutMode) { this.layoutMode = layoutMode; }
+    public String getUnitKind() { return unitKind; }
+    public void setUnitKind(String unitKind) { this.unitKind = unitKind; }
+    public String getPaginationMode() { return paginationMode; }
+    public void setPaginationMode(String paginationMode) { this.paginationMode = paginationMode; }
+    public String getLayoutNote() { return layoutNote; }
+    public void setLayoutNote(String layoutNote) { this.layoutNote = layoutNote; }
+    public Integer getItemCount() { return itemCount; }
+    public void setItemCount(Integer itemCount) { this.itemCount = itemCount; }
 
     @com.fasterxml.jackson.annotation.JsonFormat(
             shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
@@ -114,6 +131,14 @@ public class KbQuestion extends BaseEntity {
         return questionType;
     }
 
+    public String getContentKind() {
+        return contentKind;
+    }
+
+    public void setContentKind(String contentKind) {
+        this.contentKind = contentKind;
+    }
+
     public void setQuestionType(String questionType) {
         this.questionType = questionType;
     }
@@ -185,4 +210,10 @@ public class KbQuestion extends BaseEntity {
     public void setReadinessReasons(List<String> readinessReasons) {
         this.readinessReasons = readinessReasons;
     }
+    private java.util.List<KbOccurrence> matchedExamOccurrences;
+    public java.util.List<KbOccurrence> getMatchedExamOccurrences(){return matchedExamOccurrences;}
+    public void setMatchedExamOccurrences(java.util.List<KbOccurrence> value){matchedExamOccurrences=value;}
+    private java.util.List<KbOccurrence> matchedWrongOccurrences;
+    public java.util.List<KbOccurrence> getMatchedWrongOccurrences(){return matchedWrongOccurrences;}
+    public void setMatchedWrongOccurrences(java.util.List<KbOccurrence> value){matchedWrongOccurrences=value;}
 }

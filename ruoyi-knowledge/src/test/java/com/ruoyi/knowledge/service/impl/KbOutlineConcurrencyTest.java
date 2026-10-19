@@ -20,7 +20,7 @@ class KbOutlineConcurrencyTest {
         KbOutlineMapper outlines = mock(KbOutlineMapper.class);
         KbOutlineNodeMapper nodes = mock(KbOutlineNodeMapper.class);
         KbOutlineServiceImpl service =
-                new KbOutlineServiceImpl(outlines, nodes, mock(KbKpMapper.class));
+                new KbOutlineServiceImpl(outlines, nodes, mock(KbKpMapper.class), mock(KnowledgeDictionary.class));
         KbOutlineNode current = new KbOutlineNode();
         current.setId(2L);
         current.setOutlineId(1L);

@@ -32,6 +32,7 @@ class KbAssetServiceTest {
         when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         service = new KbAssetServiceImpl(mapper, storage, properties, manager);
         doAnswer(invocation -> { ((KbAsset) invocation.getArgument(0)).setAssetId(1L); return 1; }).when(mapper).insert(any());
+        when(mapper.finishUpload(any())).thenReturn(1);
     }
 
     @Test
@@ -68,7 +69,7 @@ class KbAssetServiceTest {
         byte[] bytes = "content".getBytes(StandardCharsets.UTF_8);
         KbAsset existing = asset(bytes, "FAILED");
         when(mapper.selectByExternalKey("agent", "external-1")).thenReturn(existing);
-        when(mapper.claimRetry(8L)).thenReturn(1);
+        when(mapper.claimRetry(eq(8L), anyString())).thenReturn(1);
         when(storage.stat("fixture-bucket", existing.getObjectKey())).thenReturn(new ObjectStorage.StoredObject("original-version", bytes.length, existing.getSha256()));
         try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
             security.when(SecurityUtils::getUsername).thenReturn("agent");
@@ -120,5 +121,50 @@ class KbAssetServiceTest {
         asset.setTestRunId("run-1");
         asset.setCreateBy("agent");
         return asset;
+    }
+
+    @Test void activeUploadDoesNotRaceOrCreateAnotherObject() {
+        byte[] bytes = "content".getBytes(StandardCharsets.UTF_8);
+        when(mapper.selectByExternalKey("agent", "external-1")).thenReturn(asset(bytes, "UPLOADING"));
+        try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
+            security.when(SecurityUtils::getUsername).thenReturn("agent");
+            assertThrows(ServiceException.class, () -> service.uploadBytes(bytes, "file.pdf", "application/pdf", "SOURCE_ORIGINAL", "run-1", "external-1"));
+            verifyNoInteractions(storage);
+        }
+    }
+
+    @Test void staleUploadReconcilesRemoteAndRejectsDifferentBytesWithoutOverwrite() {
+        byte[] bytes = "content".getBytes(StandardCharsets.UTF_8);
+        KbAsset existing = asset(bytes, "UPLOADING");
+        when(mapper.selectByExternalKey("agent", "external-1")).thenReturn(existing);
+        when(mapper.claimRetry(eq(8L), anyString())).thenReturn(1);
+        when(storage.stat(anyString(), anyString())).thenReturn(new ObjectStorage.StoredObject("old", bytes.length, "different-hash"));
+        try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
+            security.when(SecurityUtils::getUsername).thenReturn("agent");
+            assertThrows(ServiceException.class, () -> service.uploadBytes(bytes, "file.pdf", "application/pdf", "SOURCE_ORIGINAL", "run-1", "external-1"));
+            verify(storage, never()).put(anyString(), anyString(), any(), anyString());
+            assertEquals("FAILED", existing.getStatus());
+        }
+    }
+
+    @Test void lostUploadOwnershipCannotPublishReadyOrUseUnconditionalStateWrite() {
+        byte[] bytes = "content".getBytes(StandardCharsets.UTF_8);
+        when(storage.put(anyString(), anyString(), any(), anyString())).thenReturn(new ObjectStorage.PutResult("late"));
+        when(mapper.finishUpload(any())).thenReturn(0);
+        try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
+            security.when(SecurityUtils::getUsername).thenReturn("agent");
+            assertThrows(ServiceException.class, () -> service.uploadBytes(bytes, "file.pdf", "application/pdf", "SOURCE_ORIGINAL", "run-1", "external-1"));
+            verify(mapper, never()).updateState(any());
+        }
+    }
+
+    @Test void sourceAndProductMayShareOriginalButCannotRegisterAQuestionImageAsOriginal() {
+        KbAsset shared = asset(new byte[]{1}, "READY");
+        when(mapper.selectByIdForUpdate(8L)).thenReturn(shared);
+        assertSame(shared, service.requireOriginal(8L));
+        shared.setPurpose("PRODUCT_ORIGINAL");
+        assertSame(shared, service.requireOriginal(8L));
+        shared.setPurpose("QUESTION_IMAGE");
+        assertThrows(ServiceException.class, () -> service.requireOriginal(8L));
     }
 }

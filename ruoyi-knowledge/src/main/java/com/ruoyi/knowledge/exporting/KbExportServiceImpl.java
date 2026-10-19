@@ -21,7 +21,9 @@ import com.ruoyi.knowledge.domain.KbQuestion;
 import com.ruoyi.knowledge.dto.KbLineage;
 import com.ruoyi.knowledge.html.HtmlMetadata;
 import com.ruoyi.knowledge.html.KbHtmlCodec;
+import com.ruoyi.knowledge.html.KbHtmlLayout;
 import com.ruoyi.knowledge.importing.mapper.KbImportMapper;
+import com.ruoyi.knowledge.importing.dto.KbRecordsRequest;
 import com.ruoyi.knowledge.service.IKbKpService;
 import com.ruoyi.knowledge.service.IKbMaterialService;
 import com.ruoyi.knowledge.service.IKbQuestionService;
@@ -82,10 +84,15 @@ public class KbExportServiceImpl implements IKbExportService {
         List<KbAsset> files = assetList(selected, answers);
         List<KbExportManifest.QuestionEntry> entries = new ArrayList<>();
         List<KbExportManifest.AssetEntry> fileEntries = new ArrayList<>();
+        List<KbRecordsRequest.Record> jsonRecords = new ArrayList<>();
         Document index = document(title, origin, "");
         long fileBytes = 0;
         try (ByteArrayOutputStream buffer = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(buffer, StandardCharsets.UTF_8)) {
             for (KbQuestion question : selected) {
+                jsonRecords.add(new KbRecordsRequest.Record("question-" + question.getId(), "update",
+                        question.getId(), question.getRowVersion(), null, metadata(question), null, question.getStemHtml(),
+                        null, answers ? question.getAnswerHtml() : null, null, answers ? question.getAnalysisHtml() : null,
+                        null, null, null));
                 Element article = article(question, "", answers);
                 index.body().appendChild(article);
                 Document single = document(question.getTitle(), origin, "../");
@@ -94,11 +101,22 @@ public class KbExportServiceImpl implements IKbExportService {
                 List<KbExportManifest.KnowledgePoint> points = new ArrayList<>();
                 for (Long kpId : question.getKpIds() == null ? List.<Long>of() : question.getKpIds()) {
                     KbKp point = knowledgePoints.get(kpId);
-                    points.add(new KbExportManifest.KnowledgePoint(kpId.toString(), point.getName()));
+                    List<String> outlineIds = point.getOutlineIds() == null ? List.of()
+                            : point.getOutlineIds().stream().map(String::valueOf).toList();
+                    List<KbExportManifest.OutlineBinding> bindings = point.getOutlineBindings() == null ? List.of()
+                            : point.getOutlineBindings().stream().map(binding -> new KbExportManifest.OutlineBinding(
+                                    binding.getOutlineId().toString(), binding.getOutlineTitle(), binding.getSubject(),
+                                    binding.getTextbookVersion(), binding.getGrade(), binding.getTerm(), binding.getEdition(),
+                                    binding.getNodeId() == null ? null : binding.getNodeId().toString(), binding.getNodeTitle())).toList();
+                    points.add(new KbExportManifest.KnowledgePoint(kpId.toString(), point.getName(),
+                            point.getSubject(), point.getParentId() == null ? null : point.getParentId().toString(),
+                            point.getRootId() == null ? null : point.getRootId().toString(), point.getRootName(), point.getDepth(), outlineIds, bindings));
                 }
                 KbLineage lineage = questions.lineage(question.getId());
                 entries.add(new KbExportManifest.QuestionEntry(question.getId().toString(), question.getRowVersion().toString(),
                         question.getTitle(), "questions/" + question.getId() + ".html", question.getCreationKind(), question.getSourceNote(),
+                        question.getContentKind(), question.getSubject(), question.getQuestionType(), question.getDifficulty(), question.getStatus(),
+                        question.getLayoutMode(), question.getUnitKind(), question.getPaginationMode(), question.getLayoutNote(), question.getItemCount(), question.getHasImage(),
                         points, sources.occurrences(question.getId(), null), lineage.getParents(), lineage.getAncestorSources()));
             }
             for (KbAsset file : files) {
@@ -120,6 +138,10 @@ public class KbExportServiceImpl implements IKbExportService {
             KbExportManifest manifest = new KbExportManifest(KbHtmlCodec.SCHEMA, origin, OffsetDateTime.now().toString(), title,
                     request.materialId() == null ? null : request.materialId().toString(), answers, entries, fileEntries);
             put(zip, "manifest.json", JSON.toJSONString(manifest, JSONWriter.Feature.PrettyFormat).getBytes(StandardCharsets.UTF_8));
+            KbRecordsRequest jsonRequest = new KbRecordsRequest(KbRecordsRequest.SCHEMA,
+                    "export-" + java.util.UUID.randomUUID(), null, origin, jsonRecords, List.of());
+            put(zip, "records.json", JSON.toJSONString(jsonRequest, JSONWriter.Feature.PrettyFormat,
+                    JSONWriter.Feature.WriteLongAsString).getBytes(StandardCharsets.UTF_8));
             copyVendor(zip);
             zip.finish();
             return buffer.toByteArray();
@@ -157,7 +179,7 @@ public class KbExportServiceImpl implements IKbExportService {
         doc.head().appendElement("meta").attr("name", "kb-origin").attr("content", origin);
         doc.head().appendElement("title").text(title == null ? "知识库题目" : title);
         doc.head().appendElement("link").attr("rel", "stylesheet").attr("href", relativeRoot + "vendor/katex/katex.min.css");
-        doc.head().appendElement("style").appendChild(new DataNode("body{max-width:960px;margin:32px auto;padding:0 24px;font:18px/1.8 serif;color:#000;background:#fff}article{break-after:page;margin-bottom:32px}table{border-collapse:collapse;color:#000}td,th{border:1px solid #000;padding:4px 8px}img,svg{max-width:100%;height:auto}[data-part=answer],[data-part=analysis]{color:#c00000}[data-part=answer] *,[data-part=analysis] *{color:inherit}h2{font-size:20px}@media print{body{margin:0}article:last-child{break-after:auto}}"));
+        doc.head().appendElement("style").appendChild(new DataNode("body{max-width:960px;margin:32px auto;padding:0 24px;font:18px/1.8 serif;color:#000;background:#fff}article{margin-bottom:32px}table{border-collapse:collapse;color:#000}td,th{border:1px solid #000;padding:4px 8px}img,svg{max-width:100%;height:auto}[data-part=answer],[data-part=analysis]{color:#c00000}[data-part=answer] *,[data-part=analysis] *{color:inherit}h2{font-size:20px}@media print{body{margin:0}}" + KbHtmlLayout.CSS));
         doc.head().appendElement("script").attr("defer", "").attr("src", relativeRoot + "vendor/katex/katex.min.js");
         doc.head().appendElement("script").attr("defer", "").attr("src", relativeRoot + "vendor/katex/contrib/auto-render.min.js");
         doc.head().appendElement("script").attr("defer", "").attr("src", relativeRoot + "vendor/render.js");
@@ -170,10 +192,11 @@ public class KbExportServiceImpl implements IKbExportService {
         article.attr("data-intent", "update");
         article.attr("data-question-id", question.getId().toString());
         article.attr("data-row-version", question.getRowVersion().toString());
+        article.attr("data-layout-mode", question.getLayoutMode() == null ? "PLAIN" : question.getLayoutMode());
+        article.attr("data-unit-kind", question.getUnitKind() == null ? "SINGLE" : question.getUnitKind());
+        article.attr("data-pagination-mode", question.getPaginationMode() == null ? "FLOW" : question.getPaginationMode());
         article.appendElement("h2").text(question.getTitle());
-        HtmlMetadata metadata = new HtmlMetadata(question.getTitle(), question.getSubject(), question.getQuestionType(),
-                question.getDifficulty(), question.getKpIds(), question.getSourceNote(), null, null, null, null);
-        String json = JSON.toJSONString(metadata).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
+        String json = JSON.toJSONString(metadata(question)).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
         article.appendElement("script").attr("type", "application/json").attr("data-kb-metadata", "")
                 .appendChild(new DataNode(json));
         appendPart(article, "stem", question.getStemHtml(), root);
@@ -182,6 +205,12 @@ public class KbExportServiceImpl implements IKbExportService {
             appendPart(article, "analysis", question.getAnalysisHtml(), root);
         }
         return article;
+    }
+
+    private HtmlMetadata metadata(KbQuestion question) {
+        return new HtmlMetadata(question.getTitle(), question.getSubject(), question.getQuestionType(),
+                question.getDifficulty(), question.getKpIds(), question.getSourceNote(), null, null, null, null, question.getContentKind(),
+                question.getLayoutMode(), question.getUnitKind(), question.getPaginationMode(), question.getLayoutNote());
     }
 
     private void appendPart(Element article, String name, String html, String root) {

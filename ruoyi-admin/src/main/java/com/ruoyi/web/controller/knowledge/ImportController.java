@@ -5,12 +5,18 @@ import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.knowledge.importing.IKbImportService;
+import com.ruoyi.knowledge.importing.IKbRecordImportService;
+import com.ruoyi.knowledge.importing.dto.KbRecordsRequest;
+import com.ruoyi.common.exception.ServiceException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,9 +28,27 @@ import java.util.List;
 @RequestMapping("/knowledge/import")
 public class ImportController extends BaseController {
     private final IKbImportService imports;
+    private final IKbRecordImportService records;
 
-    public ImportController(IKbImportService imports) {
+    public ImportController(IKbImportService imports, IKbRecordImportService records) {
         this.imports = imports;
+        this.records = records;
+    }
+
+    @PostMapping("/records")
+    @PreAuthorize("@ss.hasPermi('knowledge:import:execute')")
+    @Log(title = "知识库JSON导入", businessType = BusinessType.IMPORT, isSaveRequestData = false)
+    public AjaxResult records(@RequestBody KbRecordsRequest request,
+            @RequestHeader(value = "X-KB-Test-Run", required = false) String testRunId) {
+        return success(records.importRecords(request, testRunId));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public AjaxResult invalidJson(HttpMessageNotReadableException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ServiceException service) return AjaxResult.error(400, service.getMessage());
+        }
+        return AjaxResult.error(400, "录入JSON格式或字段类型无效，请按统一JSON模板填写");
     }
 
     @GetMapping("/schema")

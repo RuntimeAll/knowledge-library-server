@@ -23,6 +23,94 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 class KbProductServiceTest {
+    private static com.ruoyi.knowledge.catalog.KbCatalogProfile profile(String role) {
+        var p = new com.ruoyi.knowledge.catalog.KbCatalogProfile();
+        p.setAudienceRole(role);
+        return p;
+    }
+
+    @Test
+    void uploadedAnswerCannotContinueStudentVersionChain() {
+        var mapper = mock(KbProductMapper.class);
+        var previous = new KbProduct();
+        previous.setId(1L);
+        previous.setRootProductId(1L);
+        previous.setProfile(profile("STUDENT"));
+        when(mapper.selectById(1L)).thenReturn(previous);
+        when(mapper.lockById(1L)).thenReturn(previous);
+        var input = new KbProduct();
+        input.setTitle("答案文件");
+        input.setAssetId(20L);
+        input.setPreviousProductId(1L);
+        input.setProfile(profile("INLINE_ANSWER"));
+        var service =
+                new KbProductServiceImpl(
+                        mapper,
+                        mock(KbMaterialMapper.class),
+                        mock(IKbAssetService.class),
+                        mock(IKbMaterialService.class),
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertEquals(
+                409, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void generatedOutputRoleCannotBeChangedThroughCatalogMetadata() {
+        var mapper = mock(KbProductMapper.class);
+        var existing = new KbProduct();
+        existing.setId(1L);
+        existing.setRootProductId(1L);
+        existing.setRowVersion(0L);
+        existing.setRenderJobId(88L);
+        existing.setRenderOutputKey("STUDENT");
+        existing.setProfile(profile("STUDENT"));
+        when(mapper.lockById(1L)).thenReturn(existing);
+        when(mapper.selectById(1L)).thenReturn(existing);
+        var command = new com.ruoyi.knowledge.catalog.KbCatalogCommand();
+        command.setRowVersion(0L);
+        command.setProfile(profile("ANSWER_ONLY"));
+        var service =
+                new KbProductServiceImpl(
+                        mapper,
+                        mock(KbMaterialMapper.class),
+                        mock(IKbAssetService.class),
+                        mock(IKbMaterialService.class),
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertEquals(
+                409,
+                assertThrows(ServiceException.class, () -> service.catalog(1L, command, "agent"))
+                        .getCode());
+        verify(mapper, never()).update(any());
+    }
+
+    @Test
+    void uploadedVersionRoleCannotBeRelabeled() {
+        var mapper = mock(KbProductMapper.class);
+        var existing = new KbProduct();
+        existing.setId(3L);
+        existing.setPreviousProductId(2L);
+        existing.setRootProductId(1L);
+        existing.setRowVersion(0L);
+        existing.setProfile(profile("INLINE_ANSWER"));
+        when(mapper.lockById(3L)).thenReturn(existing);
+        when(mapper.selectById(3L)).thenReturn(existing);
+        var input = new KbProduct();
+        input.setId(3L);
+        input.setRowVersion(0L);
+        input.setProfile(profile("STUDENT"));
+        var service =
+                new KbProductServiceImpl(
+                        mapper,
+                        mock(KbMaterialMapper.class),
+                        mock(IKbAssetService.class),
+                        mock(IKbMaterialService.class),
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertEquals(
+                409, assertThrows(ServiceException.class, () -> service.update(input)).getCode());
+        verify(mapper, never()).update(any());
+    }
+
     @Test
     void metadataCannotForgeFrozenSnapshotOrVersionChain() {
         KbProductMapper mapper = mock(KbProductMapper.class);
@@ -51,8 +139,9 @@ class KbProductServiceTest {
                         mapper,
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
-                        mock(IKbMaterialService.class));
-        service.update(input);
+                        mock(IKbMaterialService.class),
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertThrows(ServiceException.class, () -> service.update(input));
         assertEquals(1L, stored.getRootProductId());
         assertEquals(2L, stored.getPreviousProductId());
         assertEquals(3, stored.getVersionNo());
@@ -76,7 +165,8 @@ class KbProductServiceTest {
                         mapper,
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
-                        mock(IKbMaterialService.class));
+                        mock(IKbMaterialService.class),
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
         assertThrows(ServiceException.class, () -> service.update(input));
         verify(mapper, never()).update(any());
     }
@@ -100,6 +190,7 @@ class KbProductServiceTest {
         material.setRowVersion(6L);
         material.setTitle("原专项");
         material.setQuestions(List.of(question));
+        material.setReferenceSources(List.of());
         when(materials.lockById(7L)).thenReturn(material);
         when(materialService.get(7L)).thenReturn(material);
         KbProduct input = new KbProduct();
@@ -116,13 +207,17 @@ class KbProductServiceTest {
         when(mapper.selectById(3L)).thenReturn(input);
         KbProductServiceImpl service =
                 new KbProductServiceImpl(
-                        mapper, materials, mock(IKbAssetService.class), materialService);
+                        mapper,
+                        materials,
+                        mock(IKbAssetService.class),
+                        materialService,
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
         service.create(input);
         verify(mapper).lockById(1L);
         assertEquals(3, input.getVersionNo());
         assertEquals(1L, input.getRootProductId());
         assertTrue(input.getSnapshotJson().contains("\"materialId\":\"7\""));
-        assertTrue(input.getSnapshotJson().contains("\"rowVersion\":\"6\""));
+        assertTrue(input.getSnapshotJson().contains("\"materialRowVersion\":\"6\""));
         assertTrue(input.getSnapshotJson().contains("\"questionId\":\"9\""));
     }
 }

@@ -40,7 +40,7 @@ class KbSourceServiceTest {
                         occurrences,
                         questions,
                         mock(IKbAssetService.class),
-                        mock(KnowledgeDictionary.class));
+                        mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
     }
 
     @Test

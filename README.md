@@ -1,3 +1,16 @@
+# 教学资料库服务端
+
+数学与科学教学资料的 Spring Boot 服务端，基于若依扩展，管理内容、来源、成品、教材考点及模板生成。
+
+- 本仓库：[knowledge-library-server](https://github.com/RuntimeAll/knowledge-library-server)
+- 配套前端：[knowledge-library-frontend](https://github.com/RuntimeAll/knowledge-library-frontend)
+- Java 17；在本仓库执行 `mvn -B -ntp package` 构建。
+- 当前工程采用 `codeplace/backend`、`codeplace/frontend`、`codeplace/tools`、`codeplace/config` 布局。启动脚本、外置配置样例和渲染工具位于工作区，未包含在本服务端仓库；PDF 生成需额外准备 `../tools/layout-renderer/` 和根目录锁定的 Node 依赖。
+- 本机使用共享 MySQL3307 的 `knowledge_ruoyi` 和 Redis6379/DB15。真实配置只保存在工作区忽略提交的 `config/application-local.yml`，不提交账号密钥。
+- `sql/` 保存初始化及追加迁移；已有业务库不可直接重跑初始化或清空。远程代码初始化不代表已部署或通过用户业务终审。
+
+以下保留原若依框架说明及来源。
+
 <p align="center">
 	<img alt="logo" src="https://oscimg.oschina.net/oscnet/up-d3d0a9303e11d522a06cd263f3079027715.png">
 </p>
