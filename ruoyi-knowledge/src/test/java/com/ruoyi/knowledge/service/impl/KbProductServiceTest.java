@@ -23,6 +23,45 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 class KbProductServiceTest {
+    @Test
+    void staleExportCannotBeAttachedToChangedMaterial() {
+        var mapper = mock(KbProductMapper.class);
+        var materials = mock(KbMaterialMapper.class);
+        var stored = new KbMaterial();
+        stored.setId(7L);
+        stored.setRowVersion(9L);
+        when(materials.lockById(7L)).thenReturn(stored);
+        var input = new KbProduct();
+        input.setTitle("旧导出包");
+        input.setMaterialId(7L);
+        input.setExpectedMaterialRowVersion(8L);
+        input.setQuestionRefs(List.of());
+        var service = new KbProductServiceImpl(mapper, materials,
+                mock(IKbAssetService.class), mock(IKbMaterialService.class),
+                mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertEquals(409, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
+        verify(mapper, never()).insert(any());
+        verify(materials).lockById(7L);
+    }
+
+    @Test
+    void guardedArchiveRequiresExplicitExportQuestionReferences() {
+        var mapper = mock(KbProductMapper.class);
+        var materials = mock(KbMaterialMapper.class);
+        var stored = new KbMaterial();
+        stored.setRowVersion(9L);
+        when(materials.lockById(7L)).thenReturn(stored);
+        var input = new KbProduct();
+        input.setTitle("导出包");
+        input.setMaterialId(7L);
+        input.setExpectedMaterialRowVersion(9L);
+        var service = new KbProductServiceImpl(mapper, materials,
+                mock(IKbAssetService.class), mock(IKbMaterialService.class),
+                mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+        assertEquals(400, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
+        verify(mapper, never()).insert(any());
+    }
+
     private static com.ruoyi.knowledge.catalog.KbCatalogProfile profile(String role) {
         var p = new com.ruoyi.knowledge.catalog.KbCatalogProfile();
         p.setAudienceRole(role);

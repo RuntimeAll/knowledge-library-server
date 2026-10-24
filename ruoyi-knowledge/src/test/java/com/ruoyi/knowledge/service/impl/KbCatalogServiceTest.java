@@ -351,6 +351,31 @@ class KbCatalogServiceTest {
     }
 
     @Test
+    void actualSchoolExamCanBeVerifiedWithUnknownYearAndStillNeedsEvidence() {
+        KbSource s = source();
+        s.setSourceKind("EXAM");
+        s.getProfile().setResourceType("EXAM_PAPER");
+        KbExamDetail e = new KbExamDetail();
+        e.setPaperNature("ACTUAL_ADMINISTERED");
+        e.setExamPurpose("UNIT");
+        e.setSchoolName("原卷标明的学校");
+        s.setExamDetail(e);
+        KbExamVerificationCommand command = new KbExamVerificationCommand();
+        command.setAuthenticityStatus("VERIFIED");
+        command.setVerificationNote("提供者确认学生实际考试；原卷及批改答题卡已核对，年份待补");
+        assertThrows(ServiceException.class, () -> service.verify(s, command, "reviewer"));
+        command.setEvidenceAssetId(9L);
+        service.verify(s, command, "reviewer");
+        assertNull(e.getExamYear());
+        assertTrue(service.realExam(s));
+        e.setExamYear(2026);
+        assertFalse(service.realExam(s), "后补身份事实仍须重新核实，不绕过指纹校验");
+        e.setExamYear(null);
+        e.setPaperNature("SIMULATED");
+        assertThrows(ServiceException.class, () -> service.verify(s, command, "reviewer"));
+    }
+
+    @Test
     void identityEditInvalidatesVerifiedSourceButDescriptionDoesNot() {
         KbSource old = source();
         old.setSourceKind("EXAM");

@@ -174,6 +174,75 @@ class KbRenderServiceTest {
     }
 
     @Test
+    void templateLayoutOptionsAreFrozenAndPassedToRenderer() {
+        var template = templates.usableVersion(1L);
+        template.getDefinition().getOrganization().setAnswerOnlyContinuous(true);
+        template.getDefinition().getContent().setSubquestionLayout("MATCH_NUMBERED");
+        var job = service.submit(request());
+
+        template.getDefinition().getOrganization().setAnswerOnlyContinuous(false);
+        template.getDefinition().getContent().setSubquestionLayout(null);
+        service.hydrate(job);
+        var input = new KbRendererInput(
+                "kb-render-input/v1", job.getId().toString(), job.getTemplateSnapshot(),
+                job.getConfigSnapshot(), job.getItems(), job.getAssets());
+        var definition = JSON.parseObject(KbLayoutProtocol.json(input))
+                .getJSONObject("template").getJSONObject("definition");
+        assertTrue(definition.getJSONObject("organization").getBoolean("answerOnlyContinuous"));
+        assertEquals("MATCH_NUMBERED", definition.getJSONObject("content").getString("subquestionLayout"));
+    }
+
+    @Test
+    void questionLabelIsFrozenAsPrintConfigurationWithoutChangingQuestionBody() {
+        var r = request();
+        var section = tools.jackson.databind.json.JsonMapper.builder().build().readValue(
+                """
+                {"key":"source","questionLabel":" 【原题·教材第41页·第3题】 ",
+                 "questionRefs":[{"questionId":"7","rowVersion":"2"}]}
+                """, KbRenderSection.class);
+        r.setSections(List.of(section));
+        var job = service.submit(r);
+        section.setQuestionLabel("后来修改的打印标签");
+        service.hydrate(job);
+        var input = new KbRendererInput(
+                "kb-render-input/v1", job.getId().toString(), job.getTemplateSnapshot(),
+                job.getConfigSnapshot(), job.getItems(), job.getAssets());
+        var config = JSON.parseObject(KbLayoutProtocol.json(input)).getJSONObject("config");
+        assertEquals("【原题·教材第41页·第3题】",
+                config.getJSONArray("sections").getJSONObject(0).getString("questionLabel"));
+        assertEquals("<p>原题</p>", question.getStemHtml());
+        assertEquals("<p>原题</p>", job.getItems().get(0).getSnapshot().getStemHtml());
+    }
+
+    @Test
+    void questionLabelRejectsHtmlControlCharactersAndAmbiguousMultipleQuestions() {
+        for (String label : List.of("<b>原题</b>", "原题\n第3题", "题".repeat(201))) {
+            var r = request();
+            r.getSections().get(0).setQuestionLabel(label);
+            assertEquals(400,
+                    assertThrows(ServiceException.class, () -> service.submit(r)).getCode());
+        }
+        var r = request();
+        var section = r.getSections().get(0);
+        section.setQuestionLabel("【原题】");
+        section.setQuestionRefs(List.of(section.getQuestionRefs().get(0), section.getQuestionRefs().get(0)));
+        assertEquals(400,
+                assertThrows(ServiceException.class, () -> service.submit(r)).getCode());
+        verify(mapper, never()).insertJob(any());
+    }
+
+    @Test
+    void blankQuestionLabelPreservesExistingMultipleQuestionSections() {
+        var r = request();
+        var section = r.getSections().get(0);
+        section.setQuestionLabel("  ");
+        section.setQuestionRefs(List.of(section.getQuestionRefs().get(0), section.getQuestionRefs().get(0)));
+        var result = service.validate(r);
+        assertEquals(2, result.getPositionCount());
+        assertNull(result.getNormalizedRequest().getSections().get(0).getQuestionLabel());
+    }
+
+    @Test
     void staleVersionRejectedBeforeInsert() {
         question.setRowVersion(3L);
         assertEquals(

@@ -146,6 +146,7 @@ class KbExportServiceTest {
         KbQuestion question = new KbQuestion();
         question.setId(15L);
         question.setRowVersion(2L);
+        question.setStemHash("a".repeat(64));
         question.setTitle("十道口算");
         question.setQuestionType("CALCULATION");
         question.setContentKind("EXERCISE");
@@ -168,9 +169,19 @@ class KbExportServiceTest {
         lineage.setParents(List.of());
         lineage.setAncestorSources(List.of());
         when(questions.lineage(15L)).thenReturn(lineage);
-        var service = new KbExportServiceImpl(questions, mock(IKbMaterialService.class), mock(IKbKpService.class),
+        IKbMaterialService materials = mock(IKbMaterialService.class);
+        var material = new com.ruoyi.knowledge.domain.KbMaterial();
+        material.setTitle("整组计算专项");
+        material.setRowVersion(8L);
+        material.setQuestionIds(List.of(15L));
+        var declaredReference = new com.ruoyi.knowledge.domain.KbMaterialReference();
+        declaredReference.setSourceId(77L);
+        declaredReference.setNote("采用讲义的分层设计；该来源不是本题直接出处");
+        material.setReferenceSources(List.of(declaredReference));
+        when(materials.get(7L)).thenReturn(material);
+        var service = new KbExportServiceImpl(questions, materials, mock(IKbKpService.class),
                 mock(IKbSourceService.class), mock(IKbAssetService.class), imports);
-        var entries = unzip(service.export(new KbExportRequest(List.of(15L), null, true)));
+        var entries = unzip(service.export(new KbExportRequest(null, 7L, true)));
         String html = text(entries, "index.html");
         var page = org.jsoup.Jsoup.parse(html);
         assertEquals(1, page.select("article").size());
@@ -185,7 +196,13 @@ class KbExportServiceTest {
         assertTrue(html.contains("grid-template-columns:repeat(2,minmax(0,1fr))"));
         var manifest = com.alibaba.fastjson2.JSON.parseObject(text(entries, "manifest.json"));
         assertEquals(1, manifest.getJSONArray("questions").size());
+        assertEquals("8", manifest.getString("materialRowVersion"));
+        var reference = manifest.getJSONArray("materialReferenceSources").getJSONObject(0);
+        assertEquals("77", reference.getString("sourceId"));
+        assertEquals("采用讲义的分层设计；该来源不是本题直接出处", reference.getString("note"));
+        assertTrue(manifest.getJSONArray("questions").getJSONObject(0).getJSONArray("directSources").isEmpty());
         assertEquals(10, manifest.getJSONArray("questions").getJSONObject(0).getIntValue("itemCount"));
+        assertEquals("a".repeat(64), manifest.getJSONArray("questions").getJSONObject(0).getString("stemHash"));
     }
 
     private List<Entry> unzip(byte[] bytes) throws Exception {

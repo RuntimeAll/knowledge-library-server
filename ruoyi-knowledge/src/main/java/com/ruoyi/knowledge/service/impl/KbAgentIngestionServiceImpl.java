@@ -73,6 +73,8 @@ public class KbAgentIngestionServiceImpl implements IKbAgentIngestionService {
         if (request.questionRefs() != null) input.setQuestionRefs(request.questionRefs());
         if (request.referenceSources() != null)
             input.setReferenceSources(request.referenceSources());
+        if (request.expectedMaterialRowVersion() != null)
+            input.setExpectedMaterialRowVersion(request.expectedMaterialRowVersion());
         if (input.getId() != null) throw new ServiceException("新成品或新版本不能指定已有成品ID", 400);
         KbAgentSubmission prior = claim(actor, "PRODUCT", request.externalKey(), input);
         if (prior.getResourceId() != null) return products.get(prior.getResourceId());

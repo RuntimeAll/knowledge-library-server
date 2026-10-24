@@ -6,6 +6,7 @@ import com.alibaba.fastjson2.JSONObject;
 import com.ruoyi.common.exception.ServiceException;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 
@@ -35,10 +36,59 @@ class KbLayoutProtocolTest {
         KbLayoutProtocol.template(v);
         assertEquals("A4", v.getDefinition().getPage().getSize());
         assertEquals("KBBody", v.getDefinition().getPage().getFontFamily());
+        assertEquals("FIXED", v.getDefinition().getContent().getOptionLayout());
+        assertFalse(v.getDefinition().getOrganization().getAnswerOnlyContinuous());
+        assertNull(v.getDefinition().getContent().getSubquestionLayout());
         assertEquals(
                 "一元一次方程",
                 KbLayoutProtocol.parameters(v, JSONObject.of("title", "一元一次方程"), true)
                         .getString("title"));
+    }
+
+    @Test
+    void automaticOptionLayoutIsExplicitAndValidated() {
+        var v = template();
+        KbLayoutProtocol.template(v);
+        v.getDefinition().getContent().setOptionLayout("AUTO");
+        KbLayoutProtocol.template(v);
+        assertEquals("AUTO", v.getDefinition().getContent().getOptionLayout());
+        v.getDefinition().getContent().setOptionLayout("DENSE");
+        assertThrows(ServiceException.class, () -> KbLayoutProtocol.template(v));
+    }
+
+    @Test
+    void numberedSubquestionsAndContinuousAnswersSurviveHttpAndStoredDefinition() {
+        var v = template();
+        v.setDefinition(
+                JsonMapper.builder().build().readValue(
+                        """
+                        {"html":"<h1 data-kb-field='title'></h1><div data-kb-slot='sections'></div>",
+                         "organization":{"answerOnlyContinuous":true},
+                         "content":{"subquestionLayout":"MATCH_NUMBERED"}}
+                        """,
+                        KbTemplateDefinition.class));
+        KbLayoutProtocol.template(v);
+        v.setFieldSchemaJson(KbLayoutProtocol.json(v.getFieldSchema()));
+        v.setDefaultValuesJson(KbLayoutProtocol.json(v.getDefaultValues()));
+        v.setDefinitionJson(KbLayoutProtocol.json(v.getDefinition()));
+        v.setDefinition(null);
+
+        var decoded = KbExperienceServiceImpl.decode(v).getDefinition();
+        assertTrue(decoded.getOrganization().getAnswerOnlyContinuous());
+        assertEquals("MATCH_NUMBERED", decoded.getContent().getSubquestionLayout());
+    }
+
+    @Test
+    void unsupportedSubquestionLayoutAndMisspelledFieldsFail() {
+        var v = template();
+        KbLayoutProtocol.template(v);
+        v.getDefinition().getContent().setSubquestionLayout("AUTO");
+        assertThrows(ServiceException.class, () -> KbLayoutProtocol.template(v));
+        assertThrows(
+                RuntimeException.class,
+                () -> JsonMapper.builder().build().readValue(
+                        "{\"organization\":{\"answerOnlyContinous\":true}}",
+                        KbTemplateDefinition.class));
     }
 
     @Test

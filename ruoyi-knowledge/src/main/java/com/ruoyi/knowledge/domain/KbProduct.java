@@ -14,6 +14,16 @@ public class KbProduct extends com.ruoyi.knowledge.catalog.KbCatalogDocument {
     private Integer versionNo;
     private Long renderJobId;
     private String renderOutputKey;
+    /** Request-only optimistic guard; never a persisted column. */
+    private Long expectedMaterialRowVersion;
+
+    public Long getExpectedMaterialRowVersion() {
+        return expectedMaterialRowVersion;
+    }
+
+    public void setExpectedMaterialRowVersion(Long value) {
+        expectedMaterialRowVersion = value;
+    }
 
     @com.fasterxml.jackson.annotation.JsonFormat(
             shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)

@@ -8,6 +8,8 @@ import java.util.*;
 
 public class KbTemplateContent {
     private Integer optionColumns;
+    private String optionLayout;
+    private String subquestionLayout;
     private Boolean showAnalysis;
     private Double imageMaxWidthPercent;
 
@@ -17,6 +19,22 @@ public class KbTemplateContent {
 
     public void setOptionColumns(Integer value) {
         optionColumns = value;
+    }
+
+    public String getOptionLayout() {
+        return optionLayout;
+    }
+
+    public void setOptionLayout(String value) {
+        optionLayout = value;
+    }
+
+    public String getSubquestionLayout() {
+        return subquestionLayout;
+    }
+
+    public void setSubquestionLayout(String value) {
+        subquestionLayout = value;
     }
 
     public Boolean getShowAnalysis() {

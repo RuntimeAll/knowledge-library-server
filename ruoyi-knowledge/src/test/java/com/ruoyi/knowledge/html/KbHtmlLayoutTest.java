@@ -47,12 +47,34 @@ class KbHtmlLayoutTest {
     }
 
     @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 4})
+    void groupedColumnsPreserveOneRecordAndMatchingParts(int columns) {
+        String group = "<div data-kb-role='group' data-columns='" + columns + "'>"
+                + "<div data-item-key='first'><p>432＝（　）×100＋（　）×10＋（　）×1</p></div>"
+                + "<div data-item-key='second'><p>1597＝（　）×1000＋（　）×100＋（　）×10＋（　）×1</p></div></div>";
+        String answers = "<div data-kb-role='group' data-columns='" + columns + "'>"
+                + "<div data-item-key='first'>4，3，2</div><div data-item-key='second'>1，5，9，7</div></div>";
+        var doc = parse("<section data-part='stem'>" + group + "</section>"
+                + "<section data-part='answer'>" + answers + "</section>");
+        String stem = codec.sanitize(doc.stem());
+        var structure = KbHtmlLayout.validateParts(stem, codec.sanitize(doc.answer()), answers);
+        assertTrue(structure.grouped());
+        assertEquals(2, structure.itemCount());
+        assertEquals(Integer.toString(columns), Jsoup.parseBodyFragment(stem).selectFirst("[data-kb-role=group]").attr("data-columns"));
+        assertEquals(java.util.List.of("first", "second"), doc.stem().select("[data-item-key]").eachAttr("data-item-key"));
+        assertThrows(ServiceException.class, () -> KbHtmlLayout.validateParts(stem,
+                answers.replace("data-columns='" + columns + "'", "data-columns='" + (columns == 1 ? 2 : 1) + "'"), null));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
         "<div data-kb-role='options'><div data-option-key='A'>1</div><div data-option-key='A'>2</div></div>",
         "<div data-kb-role='options'><div data-option-key='A'>1</div></div>",
         "<div data-kb-role='options'><div data-option-key='A'>1<div data-kb-role='options'><div data-option-key='B'>2</div><div data-option-key='C'>3</div></div></div><div data-option-key='D'>4</div></div>",
         "<div data-option-key='A'>orphan</div>",
         "<div data-kb-role='group' data-columns='5'><div data-item-key='1'>1</div><div data-item-key='2'>2</div></div>",
+        "<div data-kb-role='group' data-columns='0'><div data-item-key='1'>1</div><div data-item-key='2'>2</div></div>",
+        "<div data-kb-role='group' data-columns='-1'><div data-item-key='1'>1</div><div data-item-key='2'>2</div></div>",
         "<div data-kb-role='group' data-columns='2'><div data-item-key='1'>1</div><div data-item-key='1'>2</div></div>",
         "<div data-kb-role='group' data-columns='2'><div data-item-key='1'></div><div data-item-key='2'>2</div></div>",
         "<span data-kb-role='puzzle'>wrong element</span>",

@@ -1,6 +1,7 @@
 package com.ruoyi.knowledge.mapper;
 
 import com.ruoyi.knowledge.domain.KbOutlineNode;
+import com.ruoyi.knowledge.dto.KbOutlineNodeKp;
 
 import org.apache.ibatis.annotations.Param;
 
@@ -20,6 +21,8 @@ public interface KbOutlineNodeMapper {
     int deleteById(Long id);
 
     List<Long> selectKpIds(Long id);
+
+    List<KbOutlineNodeKp> selectKpsForNodes(@Param("ids") List<Long> ids);
 
     int deleteKps(Long id);
 

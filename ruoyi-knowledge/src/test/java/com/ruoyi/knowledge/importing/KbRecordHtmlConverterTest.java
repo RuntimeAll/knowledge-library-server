@@ -4,6 +4,8 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.knowledge.html.KbHtmlCodec;
 import com.ruoyi.knowledge.importing.dto.KbRecordsRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -25,8 +27,36 @@ class KbRecordHtmlConverterTest {
         assertEquals(1, articles.size());
         var parsed = codec.readArticle(articles.get(0));
         assertEquals("GROUP", parsed.metadata().unitKind());
+        assertEquals("2", parsed.stem().selectFirst("[data-kb-role=group]").attr("data-columns"));
         assertEquals(List.of("1", "2"), parsed.stem().select("[data-item-key]").eachAttr("data-item-key"));
         assertEquals(List.of("1", "2"), parsed.answer().select("[data-item-key]").eachAttr("data-item-key"));
+    }
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3, 4})
+    void explicitGroupColumnsSurviveJsonConversionWithStableAnswerAndAnalysisKeys(int columns) {
+        var document = request("""
+            "records":[{"clientKey":"decompose","stem":"在括号里填数。","columns":%d,"items":[
+              {"key":"first","stem":"432＝（　）×100＋（　）×10＋（　）×1","answer":"4，3，2","analysis":"按百、十、个位分解。"},
+              {"key":"second","stem":"1597＝（　）×1000＋（　）×100＋（　）×10＋（　）×1","answer":"1，5，9，7"}]}]
+            """.formatted(columns));
+        var articles = codec.readArticles(converter.convert(document));
+        assertEquals(1, articles.size());
+        var parsed = codec.readArticle(articles.get(0));
+        assertEquals("GROUP", parsed.metadata().unitKind());
+        for (var part : List.of(parsed.stem(), parsed.answer(), parsed.analysis())) {
+            assertEquals(Integer.toString(columns), part.selectFirst("[data-kb-role=group]").attr("data-columns"));
+            assertEquals(List.of("first", "second"), part.select("[data-item-key]").eachAttr("data-item-key"));
+        }
+        assertEquals("1，5，9，7", parsed.answer().selectFirst("[data-item-key=second]").text());
+        assertTrue(parsed.analysis().selectFirst("[data-item-key=second]").text().isEmpty());
+    }
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 5})
+    void groupColumnsOutsideSupportedRangeKeepFailureReceipt(int columns) {
+        assertItemFailure(request("""
+            "records":[{"clientKey":"invalid-columns","stem":"口算","columns":%d,
+              "items":[{"key":"1","stem":"1+2="},{"key":"2","stem":"2+3="}]}]
+            """.formatted(columns)));
     }
     @Test void optionImagesUseSameAssetResolverInputAndMetadataCannotBreakOut() {
         var document = request("""

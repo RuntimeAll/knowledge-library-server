@@ -146,6 +146,7 @@ public final class KbLayoutProtocol {
         o.setNumbering(choice(o.getNumbering(), "CONTINUOUS", "CONTINUOUS", "SECTION"));
         o.setSectionPageBreak(Boolean.TRUE.equals(o.getSectionPageBreak()));
         o.setDayPageBreak(Boolean.TRUE.equals(o.getDayPageBreak()));
+        o.setAnswerOnlyContinuous(Boolean.TRUE.equals(o.getAnswerOnlyContinuous()));
         var c = d.getContent();
         if (c == null) {
             c = new KbTemplateContent();
@@ -161,6 +162,10 @@ public final class KbLayoutProtocol {
                                 1,
                                 4,
                                 "选项分栏"));
+        c.setOptionLayout(choice(c.getOptionLayout(), "FIXED", "FIXED", "AUTO"));
+        // Omission preserves legacy block layout; matching numbered subquestions is opt-in.
+        if (c.getSubquestionLayout() != null)
+            c.setSubquestionLayout(choice(c.getSubquestionLayout(), null, "MATCH_NUMBERED"));
         c.setShowAnalysis(Boolean.TRUE.equals(c.getShowAnalysis()));
         c.setImageMaxWidthPercent(range(c.getImageMaxWidthPercent(), 100, 10, 100, "图片宽度"));
         limit(version.getChangeNote(), 10000, "变更说明");

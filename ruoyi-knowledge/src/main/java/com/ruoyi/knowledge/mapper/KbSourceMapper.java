@@ -14,6 +14,10 @@ public interface KbSourceMapper {
 
     List<KbSource> selectList(com.ruoyi.knowledge.catalog.KbCatalogQuery query);
 
+    List<KbSource> selectByIds(@Param("ids") List<Long> ids);
+
+    List<KbSourceAttachment> selectAttachmentsBySources(@Param("ids") List<Long> ids);
+
     int insert(KbSource entity);
 
     int update(KbSource entity);

@@ -102,7 +102,7 @@ public class KbRecordHtmlConverter {
         Element section = article.appendElement("section").attr("data-part", part).html(content == null ? "" : content);
         if (items != null) {
             int width = columns == null ? 2 : columns;
-            if (width < 2 || width > 4) fail("columns只能为2、3或4");
+            if (width < 1 || width > 4) fail("columns只能为1、2、3或4");
             Element group = section.appendElement("div").attr("data-kb-role", "group").attr("data-columns", Integer.toString(width));
             for (var item : items) {
                 String itemHtml = itemPart(item, part);

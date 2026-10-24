@@ -17,11 +17,12 @@
         <result property="updateBy" column="update_by"/>
         <result property="updateTime" column="update_time"/>
         <result property="remark" column="remark"/>
+<result property="subject" column="exam_subject"/><result property="grade" column="exam_grade"/><result property="examType" column="exam_type"/><result property="examYear" column="exam_year"/><result property="schoolName" column="school_name"/><result property="scopeNote" column="scope_note"/><result property="verificationNote" column="verification_note"/>
     </resultMap>
     <select id="selectById" resultMap="result">SELECT * FROM kb_source WHERE id=#{id}</select>
     <select id="lockById" resultMap="result">SELECT * FROM kb_source WHERE id=#{id} FOR UPDATE</select>
     <select id="selectList" resultMap="result">
-        SELECT r.*,e.authenticity_status FROM kb_source r LEFT JOIN kb_source_profile p ON p.source_id=r.id
+        SELECT r.*,e.authenticity_status,e.subject AS exam_subject,e.grade AS exam_grade,e.exam_type,e.exam_year,e.school_name,e.scope_note,e.verification_note FROM kb_source r LEFT JOIN kb_source_profile p ON p.source_id=r.id
         LEFT JOIN kb_exam_source e ON e.source_id=r.id AND r.source_kind='EXAM' LEFT JOIN kb_exam_source_detail ed ON ed.source_id=e.source_id
         <where>
             <if test="title != null and title != ''">AND r.title LIKE CONCAT('%',#{title},'%')</if>
@@ -80,4 +81,6 @@
             update_by=#{actor},update_time=NOW()
         WHERE id=#{id} AND extraction_status='ORIGINAL_ONLY'
     </update>
+    <select id="selectByIds" resultMap="result">SELECT r.*,e.authenticity_status,e.subject AS exam_subject,e.grade AS exam_grade,e.exam_type,e.exam_year,e.school_name,e.scope_note,e.verification_note FROM kb_source r LEFT JOIN kb_exam_source e ON e.source_id=r.id AND r.source_kind='EXAM' WHERE r.id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach></select>
+    <select id="selectAttachmentsBySources" resultType="com.ruoyi.knowledge.domain.KbSourceAttachment">SELECT source_id AS sourceId,asset_id AS assetId,role FROM kb_source_asset WHERE source_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach> ORDER BY source_id,asset_id,role</select>
 </mapper>

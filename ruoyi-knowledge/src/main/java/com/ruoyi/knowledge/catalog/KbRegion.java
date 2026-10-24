@@ -5,6 +5,7 @@ public class KbRegion extends CatalogFields {
     private String regionCode;
     private String parentCode;
     private String name;
+    private String fullName;
     private Integer level;
     private String status;
     private String standardCode;
@@ -40,6 +41,15 @@ public class KbRegion extends CatalogFields {
 
     public Integer getLevel() {
         return level;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String value) {
+        fullName = value;
+        supplied("fullName");
     }
 
     public void setLevel(Integer value) {

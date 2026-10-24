@@ -9,6 +9,7 @@ import java.util.*;
 public class KbTemplateOrganization {
     private Boolean sectionPageBreak;
     private Boolean dayPageBreak;
+    private Boolean answerOnlyContinuous;
     private String numbering;
 
     public Boolean getSectionPageBreak() {
@@ -25,6 +26,14 @@ public class KbTemplateOrganization {
 
     public void setDayPageBreak(Boolean value) {
         dayPageBreak = value;
+    }
+
+    public Boolean getAnswerOnlyContinuous() {
+        return answerOnlyContinuous;
+    }
+
+    public void setAnswerOnlyContinuous(Boolean value) {
+        answerOnlyContinuous = value;
     }
 
     public String getNumbering() {

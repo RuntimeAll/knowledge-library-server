@@ -33,8 +33,17 @@
     </resultMap>
     <select id="selectById" resultMap="result">SELECT * FROM kb_question WHERE id=#{id}</select>
     <select id="lockById" resultMap="result">SELECT * FROM kb_question WHERE id=#{id} FOR UPDATE</select>
-    <select id="selectList" resultMap="result">
-        SELECT * FROM kb_question
+    <resultMap id="listResult" type="com.ruoyi.knowledge.domain.KbQuestion" extends="result">
+        <result property="isRealExam" column="is_real_exam"/>
+    </resultMap>
+    <select id="selectList" resultMap="listResult">
+        SELECT kb_question.*, EXISTS(
+            SELECT 1 FROM kb_question_source exam_qs JOIN kb_source exam_s ON exam_s.id=exam_qs.source_id
+            JOIN kb_verified_exam_source exam_e ON exam_e.source_id=exam_qs.source_id
+            WHERE exam_qs.question_id=kb_question.id AND kb_question.content_kind='EXERCISE'
+              AND exam_s.source_kind='EXAM' AND exam_e.authenticity_status='VERIFIED'
+              AND exam_qs.match_status='VERIFIED' AND exam_qs.matched_stem_hash=kb_question.stem_hash
+        ) AS is_real_exam FROM kb_question
         <where>
             <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
             <if test="query != null and query != ''">
@@ -95,6 +104,11 @@
     <update id="update">UPDATE kb_question SET title=#{title},stem_html=#{stemHtml},answer_html=#{answerHtml},analysis_html=#{analysisHtml},stem_text=#{stemText},stem_hash=#{stemHash},has_image=#{hasImage},status=#{status},subject=#{subject},content_kind=#{contentKind},layout_mode=#{layoutMode},unit_kind=#{unitKind},pagination_mode=#{paginationMode},layout_note=#{layoutNote},item_count=#{itemCount},question_type=#{questionType},difficulty=#{difficulty},creation_kind=#{creationKind},source_note=#{sourceNote},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_question WHERE id=#{id}</delete>
     <select id="selectKpIds" resultType="long">SELECT kp_id FROM kb_question_kp WHERE question_id=#{id} ORDER BY kp_id</select>
+    <select id="selectKpsForQuestions" resultType="com.ruoyi.knowledge.domain.KbQuestionKp">
+        SELECT question_id AS questionId,kp_id AS kpId FROM kb_question_kp
+        WHERE question_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY question_id,kp_id
+    </select>
     <select id="selectAssetIds" resultType="long">SELECT asset_id FROM kb_question_asset WHERE question_id=#{id} ORDER BY asset_id</select>
     <delete id="deleteKps">DELETE FROM kb_question_kp WHERE question_id=#{id}</delete>
     <delete id="deleteAssets">DELETE FROM kb_question_asset WHERE question_id=#{id}</delete>
@@ -121,5 +135,5 @@
     </resultMap>
     <select id="selectParents" resultMap="derivation">SELECT d.*,q.title AS parent_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.parent_question_id WHERE child_question_id=#{id} ORDER BY is_primary DESC,parent_question_id</select>
     <select id="selectChildren" resultMap="derivation">SELECT d.*,q.title AS child_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.child_question_id WHERE parent_question_id=#{id} ORDER BY child_question_id</select>
-    <select id="examRegionCodes" resultType="string">WITH RECURSIVE region_tree AS (SELECT region_code FROM kb_region WHERE region_code=#{code} UNION ALL SELECT r.region_code FROM kb_region r JOIN region_tree t ON r.parent_code=t.region_code) SELECT region_code FROM region_tree</select>
+    <select id="examRegionCodes" resultType="string">WITH RECURSIVE region_tree AS (SELECT region_code FROM kb_region WHERE region_code=#{code} OR (#{code} IN ('CN','00000000') AND region_code IN ('CN','00000000')) UNION ALL SELECT r.region_code FROM kb_region r JOIN region_tree t ON r.parent_code=t.region_code) SELECT DISTINCT region_code FROM region_tree</select>
 </mapper>

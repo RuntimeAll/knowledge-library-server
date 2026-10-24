@@ -11,7 +11,9 @@ import static com.ruoyi.knowledge.service.impl.KnowledgeRules.version;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.knowledge.domain.KbDerivation;
 import com.ruoyi.knowledge.domain.KbKp;
+import com.ruoyi.knowledge.domain.KbOccurrence;
 import com.ruoyi.knowledge.domain.KbQuestion;
+import com.ruoyi.knowledge.domain.KbQuestionKp;
 import com.ruoyi.knowledge.dto.KbLineage;
 import com.ruoyi.knowledge.dto.KbQuestionQuery;
 import com.ruoyi.knowledge.html.KbHtmlLayout;
@@ -27,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /** 公共题目元数据和导入写入边界，正文只由导入服务调用。 */
 @Service
@@ -65,10 +69,14 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         if (query.getExamRegionCode() != null) {
             List<String> regions = mapper.examRegionCodes(query.getExamRegionCode());
             if (regions.isEmpty()) throw new ServiceException("考试区域不存在", 400);
+            boolean national = List.of("CN", "00000000").contains(query.getExamRegionCode());
+            if (national && regions.contains("00000000")) query.setExamRegionCode("00000000");
             query.setExamRegionCodes(
                     Boolean.TRUE.equals(query.getExamRegionDescendants())
                             ? regions
-                            : List.of(query.getExamRegionCode()));
+                            : national
+                                    ? regions.stream().filter(code -> "CN".equals(code) || "00000000".equals(code)).toList()
+                                    : List.of(query.getExamRegionCode()));
         } else if (Boolean.TRUE.equals(query.getExamRegionDescendants()))
             throw new ServiceException("examRegionDescendants需要examRegionCode", 400);
         if (query.getExamYear() != null && (query.getExamYear() < 1 || query.getExamYear() > 9999))
@@ -83,13 +91,21 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
 
     public List<KbQuestion> list(KbQuestionQuery query) {
         List<KbQuestion> page = mapper.selectList(query);
+        if (page.isEmpty()) return page;
+        List<Long> questionIds = page.stream().map(KbQuestion::getId).toList();
+        Map<Long, List<Long>> kpIds = mapper.selectKpsForQuestions(questionIds).stream()
+                .collect(Collectors.groupingBy(KbQuestionKp::getQuestionId,
+                        Collectors.mapping(KbQuestionKp::getKpId, Collectors.toList())));
+        Map<Long, List<KbOccurrence>> examMatches = occurrences.matchedExamForQuestions(questionIds, query).stream()
+                .collect(Collectors.groupingBy(KbOccurrence::getQuestionId));
+        Map<Long, List<KbOccurrence>> wrongMatches = occurrences.matchedWrongForQuestions(questionIds, query).stream()
+                .collect(Collectors.groupingBy(KbOccurrence::getQuestionId));
         for (KbQuestion question : page) {
             normalizeLegacyContentKind(question);
-            question.setKpIds(mapper.selectKpIds(question.getId()));
-            question.setIsRealExam(mapper.isRealExam(question.getId()));
+            question.setKpIds(kpIds.getOrDefault(question.getId(), List.of()));
             question.setReadinessReasons(readiness(question));
-            question.setMatchedExamOccurrences(occurrences.matchedExam(question.getId(), query));
-            question.setMatchedWrongOccurrences(occurrences.matchedWrong(question.getId(), query));
+            question.setMatchedExamOccurrences(examMatches.getOrDefault(question.getId(), List.of()));
+            question.setMatchedWrongOccurrences(wrongMatches.getOrDefault(question.getId(), List.of()));
         }
         return page;
     }

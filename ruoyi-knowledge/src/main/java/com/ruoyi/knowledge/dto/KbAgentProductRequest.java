@@ -13,9 +13,10 @@ public record KbAgentProductRequest(
         List<Long> declaredKpIds,
         List<KbRegionLink> regions,
         List<KbProductQuestionRef> questionRefs,
-        List<KbProductReferenceSource> referenceSources) {
+        List<KbProductReferenceSource> referenceSources,
+        Long expectedMaterialRowVersion) {
     public KbAgentProductRequest(String externalKey, KbProduct product) {
-        this(externalKey, product, null, null, null, null, null, null);
+        this(externalKey, product, null, null, null, null, null, null, null);
     }
 
     @com.fasterxml.jackson.annotation.JsonAnySetter

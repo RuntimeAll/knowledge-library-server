@@ -8,6 +8,15 @@ import java.util.List;
 
 /** Typed catalog persistence; owner discriminators select only the two explicit table families. */
 public interface KbCatalogMapper {
+    List<KbCatalogBatch> batchProfiles(@Param("ownerKind") String kind, @Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchScopes(@Param("ownerKind") String kind, @Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchKps(@Param("ownerKind") String kind, @Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchRegions(@Param("ownerKind") String kind, @Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchExams(@Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchProductQuestions(@Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchProductSources(@Param("ownerIds") List<Long> ids);
+    List<KbCatalogBatch> batchCollections(@Param("ownerIds") List<Long> ids);
+
     KbCatalogProfile profile(@Param("ownerKind") String ownerKind, @Param("ownerId") Long ownerId);
 
     int saveProfile(

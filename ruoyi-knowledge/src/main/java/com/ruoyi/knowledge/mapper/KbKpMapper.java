@@ -4,12 +4,16 @@ import com.ruoyi.knowledge.domain.KbKp;
 import com.ruoyi.knowledge.domain.KbKpEdge;
 import com.ruoyi.knowledge.domain.KbQuestionKp;
 import com.ruoyi.knowledge.dto.KbKpOutlineBinding;
+import com.ruoyi.knowledge.dto.KbKpOutlineRow;
+import com.ruoyi.knowledge.dto.KbKpName;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
 public interface KbKpMapper {
     KbKp selectById(Long id);
+
+    List<KbKpName> selectNames(@Param("ids") List<Long> ids);
 
     KbKp lockById(Long id);
 
@@ -38,6 +42,7 @@ public interface KbKpMapper {
 
     List<Long> selectOutlineIds(Long id);
     List<KbKpOutlineBinding> selectOutlineBindings(Long id);
+    List<KbKpOutlineRow> selectOutlineRowsForKps(@Param("ids") List<Long> ids);
     int insertOutline(@Param("kpId") Long kpId, @Param("outlineId") Long outlineId);
     int deleteOutline(@Param("kpId") Long kpId, @Param("outlineId") Long outlineId);
     int deleteOutlines(Long id);

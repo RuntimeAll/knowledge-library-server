@@ -34,8 +34,8 @@ public final class KbHtmlLayout {
         }
         for (Element element : root.select("[data-columns]")) {
             if (!"group".equals(element.attr("data-kb-role"))
-                    || !Set.of("2", "3", "4").contains(element.attr("data-columns")))
-                fail("data-columns只允许成组容器使用2、3或4列");
+                    || !Set.of("1", "2", "3", "4").contains(element.attr("data-columns")))
+                fail("data-columns只允许成组容器使用1、2、3或4列");
         }
         for (Element element : root.select("[data-option-key]")) {
             if (!directChildOf(element, "options")) fail("选项必须是options容器的直属div");
@@ -47,7 +47,7 @@ public final class KbHtmlLayout {
         int count = 1;
         if (!groups.isEmpty()) {
             Element group = groups.get(0);
-            if (!group.hasAttr("data-columns")) fail("成组容器必须明确data-columns为2、3或4");
+            if (!group.hasAttr("data-columns")) fail("成组容器必须明确data-columns为1、2、3或4");
             validateChildren(group, "data-item-key", "[A-Za-z0-9._-]{1,64}", 2, 200, allowEmptyGroupItems);
             count = group.childrenSize();
         }
@@ -108,6 +108,7 @@ public final class KbHtmlLayout {
         article[data-pagination-mode=KEEP_TOGETHER]{break-inside:avoid;page-break-inside:avoid}
         article[data-pagination-mode=ALLOW_SPLIT]{break-inside:auto;page-break-inside:auto}
         [data-kb-role=group]{display:grid;gap:16px 24px}
+        [data-kb-role=group][data-columns="1"]{grid-template-columns:minmax(0,1fr)}
         [data-kb-role=group][data-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
         [data-kb-role=group][data-columns="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
         [data-kb-role=group][data-columns="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}

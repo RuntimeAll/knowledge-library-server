@@ -12,6 +12,8 @@ import com.ruoyi.knowledge.domain.KbKp;
 import com.ruoyi.knowledge.domain.KbKpEdge;
 import com.ruoyi.knowledge.domain.KbQuestionKp;
 import com.ruoyi.knowledge.domain.KbOutline;
+import com.ruoyi.knowledge.dto.KbKpOutlineRow;
+import com.ruoyi.knowledge.dto.KbKpName;
 import com.ruoyi.knowledge.mapper.KbKpMapper;
 import com.ruoyi.knowledge.mapper.KbOutlineMapper;
 import com.ruoyi.knowledge.service.IKbKpService;
@@ -25,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /** 考点维护及嵌套/组合查询语义。 */
 @Service
@@ -41,9 +44,29 @@ public class KbKpServiceImpl implements IKbKpService {
 
     public List<KbKp> list(KbKp query) {
         List<KbKp> page = mapper.selectList(query);
-        page.forEach(this::attachOutlines);
+        if (page.isEmpty()) return page;
+        List<Long> ids = page.stream().map(KbKp::getId).toList();
+        Map<Long, List<KbKpOutlineRow>> bindings = mapper.selectOutlineRowsForKps(ids).stream()
+                .collect(Collectors.groupingBy(KbKpOutlineRow::getKpId));
+        for (KbKp point : page) {
+            List<KbKpOutlineRow> rows = bindings.getOrDefault(point.getId(), List.of());
+            point.setOutlineIds(rows.stream().map(KbKpOutlineRow::getOutlineId).distinct().toList());
+            point.setOutlineBindings(rows.stream().map(KbKpOutlineRow::getBinding)
+                    .filter(java.util.Objects::nonNull).toList());
+        }
         attachHierarchy(page, mapper.selectEdges());
         return page;
+    }
+
+    public List<KbKpName> names(List<Long> ids) {
+        if (ids == null || ids.isEmpty() || ids.size() > 200)
+            throw new ServiceException("每次查询须提供 1 至 200 个考点 ID", 400);
+        if (ids.stream().anyMatch(id -> id == null || id <= 0))
+            throw new ServiceException("考点 ID 必须为正整数", 400);
+        List<Long> distinctIds = ids.stream().distinct().toList();
+        Map<Long, KbKpName> names = mapper.selectNames(distinctIds).stream()
+                .collect(Collectors.toMap(KbKpName::getId, name -> name));
+        return distinctIds.stream().map(names::get).filter(java.util.Objects::nonNull).toList();
     }
 
     public KbKp get(Long id) {

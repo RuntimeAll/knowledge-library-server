@@ -123,6 +123,80 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
         target.setMatchReasons(List.of());
     }
 
+    /** Load relationships once for the current page, retaining each existing document instance. */
+    public void enrichBatch(String kind, Map<Long, ? extends KbCatalogDocument> targets) {
+        if (targets.isEmpty()) return;
+        List<Long> ids = new ArrayList<>(targets.keySet());
+        Map<Long, KbCatalogBatch> profiles = indexed(mapper.batchProfiles(kind, ids));
+        Map<Long, KbCatalogBatch> scopes = indexed(mapper.batchScopes(kind, ids));
+        Map<Long, KbCatalogBatch> kps = indexed(mapper.batchKps(kind, ids));
+        Map<Long, KbCatalogBatch> regions = indexed(mapper.batchRegions(kind, ids));
+        Map<Long, KbCatalogBatch> exams = "SOURCE".equals(kind)
+                ? indexed(mapper.batchExams(ids)) : Map.of();
+        Map<Long, KbCatalogBatch> questions = "PRODUCT".equals(kind)
+                ? indexed(mapper.batchProductQuestions(ids)) : Map.of();
+        Map<Long, KbCatalogBatch> sources = "PRODUCT".equals(kind)
+                ? indexed(mapper.batchProductSources(ids)) : Map.of();
+        targets.forEach((id, target) -> {
+            applyProfile(kind, target, profiles.get(id));
+            target.setOutlineScopes(scopes.containsKey(id) ? list(scopes.get(id).getOutlineScopes()) : List.of());
+            target.setDeclaredKpIds(kps.containsKey(id) ? list(kps.get(id).getDeclaredKpIds()) : List.of());
+            target.setActualKpIds(kps.containsKey(id) ? list(kps.get(id).getActualKpIds()) : List.of());
+            target.setRegions(regions.containsKey(id) ? list(regions.get(id).getRegions()) : List.of());
+            if ("SOURCE".equals(kind)) applyExam(target, exams.get(id));
+            else {
+                target.setQuestionRefs(questions.containsKey(id) ? list(questions.get(id).getQuestionRefs()) : List.of());
+                target.setReferenceSources(sources.containsKey(id) ? list(sources.get(id).getReferenceSources()) : List.of());
+            }
+            target.setReadinessReasons(readiness(kind, target));
+            target.setMatchReasons(List.of());
+        });
+    }
+
+    /** Occurrence flags need exact exam identity, not unrelated scopes, attachments or question lists. */
+    public void enrichExamSources(Map<Long, KbSource> targets) {
+        if (targets.isEmpty()) return;
+        List<Long> ids = new ArrayList<>(targets.keySet());
+        Map<Long, KbCatalogBatch> profiles = indexed(mapper.batchProfiles("SOURCE", ids));
+        Map<Long, KbCatalogBatch> regions = indexed(mapper.batchRegions("SOURCE", ids));
+        Map<Long, KbCatalogBatch> exams = indexed(mapper.batchExams(ids));
+        targets.forEach((id, target) -> {
+            applyProfile("SOURCE", target, profiles.get(id));
+            target.setRegions(regions.containsKey(id) ? list(regions.get(id).getRegions()) : List.of());
+            applyExam(target, exams.get(id));
+            target.setSubject(target.getProfile().getSubject());
+        });
+    }
+
+    public Map<Long, List<KbOccurrenceCollection>> collectionsBatch(List<Long> ids) {
+        Map<Long, List<KbOccurrenceCollection>> result = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (KbCatalogBatch row : mapper.batchCollections(ids))
+                result.put(row.getOwnerId(), list(row.getCollections()));
+        }
+        return result;
+    }
+
+    private Map<Long, KbCatalogBatch> indexed(List<KbCatalogBatch> rows) {
+        Map<Long, KbCatalogBatch> result = new HashMap<>();
+        for (KbCatalogBatch row : rows) result.put(row.getOwnerId(), row);
+        return result;
+    }
+
+    private void applyProfile(String kind, KbCatalogDocument target, KbCatalogBatch row) {
+        KbCatalogProfile profile = row == null ? null : row.getProfile();
+        if (profile == null) profile = legacy(kind, target);
+        else profile.setLegacy(false);
+        target.setProfile(profile);
+    }
+
+    private void applyExam(KbCatalogDocument target, KbCatalogBatch row) {
+        KbExamDetail exam = row == null ? null : row.getExamDetail();
+        if (exam != null && "VERIFIED".equals(exam.getAuthenticityStatus())
+                && exam.getIdentityFingerprint() == null) exam.setLegacyVerification(true);
+        target.setExamDetail(exam);
+    }
+
     private void merge(String kind, KbCatalogDocument data, KbCatalogDocument old) {
         KbCatalogProfile prior = old == null ? legacy(kind, data) : old.getProfile();
         KbCatalogProfile profile = new KbCatalogProfile();
@@ -255,6 +329,7 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
             String kind, KbCatalogDocument data, KbCatalogDocument old, boolean ready) {
         Set<String> seen = new HashSet<>();
         for (KbRegionLink link : list(data.getRegions())) {
+            link.setRegionCode(canonicalRegionCode(link.getRegionCode()));
             String role = choice(link.getRole(), null, "ORIGIN", "APPLICABLE", "EXAM_SCOPE");
             if ("PRODUCT".equals(kind) && !"APPLICABLE".equals(role))
                 throw new ServiceException("成品只允许APPLICABLE区域", 400);
@@ -278,6 +353,7 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
                 if (!"0".equals(region.getStatus())) throw new ServiceException("区域已停用", 400);
             }
             link.setName(region.getName());
+            link.setFullName(region.getFullName());
         }
     }
 
@@ -623,11 +699,10 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
             if (!"ACTUAL_ADMINISTERED".equals(e.getPaperNature())
                     || blank(source.getProfile().getSubject())
                     || blank(e.getExamPurpose())
-                    || e.getExamYear() == null
                     || blank(e.getOrganizerName()) && blank(e.getSchoolName())
                     || e.getEvidenceAssetId() == null
                     || blank(e.getVerificationNote()))
-                throw new ServiceException("核实须具备实际考试原卷、学科、考试用途、年份、组织者或学校、附件证据及核实说明", 400);
+                throw new ServiceException("核实须具备实际考试原卷、学科、考试用途、组织者或学校、附件证据及核实说明；未知年份可待补", 400);
             e.setVerifiedAt(LocalDateTime.now());
             e.setVerifiedBy(actor);
             e.setIdentityFingerprint(identity(source));
@@ -690,11 +765,18 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
     }
 
     public List<KbRegion> regions(String parentCode, String keyword) {
+        // Resolve the legacy CN alias in SQL so PageHelper applies to the list query.
         return mapper.listRegions(parentCode, keyword);
     }
 
     public KbRegion region(String code) {
-        return found(mapper.region(code));
+        return found(mapper.region(canonicalRegionCode(code)));
+    }
+
+    private String canonicalRegionCode(String code) {
+        // Keep a pre-import installation usable and old clients compatible.
+        if ("CN".equals(code) && mapper.region("00000000") != null) return "00000000";
+        return code;
     }
 
     public List<KbOccurrenceCollection> collections(Long id) {
@@ -767,6 +849,7 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
                         || "LATEST".equals(q.getHistoryMode())))
             throw new ServiceException("来源不支持成品条件", 400);
         if (q.getRegionCode() != null) {
+            q.setRegionCode(canonicalRegionCode(q.getRegionCode()));
             q.setRegionRole(choice(q.getRegionRole(), null, "ORIGIN", "APPLICABLE", "EXAM_SCOPE"));
             if ("PRODUCT".equals(kind) && !"APPLICABLE".equals(q.getRegionRole()))
                 throw new ServiceException("成品仅支持适用地区筛选", 400);
@@ -780,7 +863,10 @@ public class KbCatalogServiceImpl implements IKbCatalogService {
                 if (!"APPLICABLE".equals(q.getRegionRole()))
                     throw new ServiceException("全国扩展仅适用于APPLICABLE", 400);
                 if (!codes.contains("CN")) codes.add("CN");
+                if (mapper.region("00000000") != null && !codes.contains("00000000"))
+                    codes.add("00000000");
             }
+            if (codes.contains("00000000") && !codes.contains("CN")) codes.add("CN");
             q.setRegionCodes(codes);
         } else if (q.getRegionRole() != null
                 || Boolean.TRUE.equals(q.getRegionDescendants())

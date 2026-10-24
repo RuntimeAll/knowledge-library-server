@@ -28,6 +28,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.Set;
 
@@ -62,11 +65,21 @@ public class KbSourceServiceImpl implements IKbSourceService {
 
     public List<KbSource> list(KbCatalogQuery query) {
         List<KbSource> page = mapper.selectList(query);
-        for (int i = 0; i < page.size(); i++) {
-            KbSource row = get(page.get(i).getId());
+        if (page.isEmpty()) return page;
+        Map<Long, KbSource> targets = new LinkedHashMap<>();
+        page.forEach(row -> targets.put(row.getId(), row));
+        Map<Long, List<KbSourceAttachment>> attachments = new HashMap<>();
+        for (KbSourceAttachment item : mapper.selectAttachmentsBySources(new ArrayList<>(targets.keySet())))
+            attachments.computeIfAbsent(item.getSourceId(), ignored -> new ArrayList<>()).add(item);
+        page.forEach(row -> {
+            row.setAttachments(attachments.getOrDefault(row.getId(), List.of()));
+            row.setAssetIds(row.getAttachments().stream().map(KbSourceAttachment::getAssetId).distinct().toList());
+        });
+        catalog.enrichBatch("SOURCE", targets);
+        page.forEach(row -> {
+            if (row.getProfile() != null) row.setSubject(row.getProfile().getSubject());
             row.setMatchReasons(catalogMatches(query));
-            page.set(i, row);
-        }
+        });
         return page;
     }
 
@@ -370,7 +383,33 @@ public class KbSourceServiceImpl implements IKbSourceService {
 
     public List<KbOccurrence> occurrenceList(KbOccurrenceQuery query) {
         List<KbOccurrence> page = occurrences.selectCatalogList(query);
-        page.forEach(this::flags);
+        if (page.isEmpty()) return page;
+        List<Long> ids = page.stream().map(KbOccurrence::getId).toList();
+        Map<Long, KbOccurrenceQuestionState> current = new HashMap<>();
+        for (KbOccurrenceQuestionState state : occurrences.questionStates(ids))
+            current.put(state.getOccurrenceId(), state);
+        Map<Long, KbSource> sourceRows = new LinkedHashMap<>();
+        for (KbSource row : mapper.selectByIds(page.stream().map(KbOccurrence::getSourceId).distinct().toList()))
+            sourceRows.put(row.getId(), row);
+        catalog.enrichExamSources(sourceRows);
+        Map<Long, Boolean> realSources = new HashMap<>();
+        sourceRows.forEach((id, source) -> realSources.put(id, catalog.realExam(source)));
+        Map<Long, List<KbOccurrenceCollection>> collections = catalog.collectionsBatch(ids);
+        page.forEach(row -> {
+            KbSource source = found(sourceRows.get(row.getSourceId()));
+            KbOccurrenceQuestionState question = current.get(row.getId());
+            boolean exists = question != null && question.getQuestionId() != null;
+            boolean matches = exists && row.getMatchedStemHash() != null
+                    && Objects.equals(row.getMatchedStemHash(), question.getStemHash());
+            row.setQuestionTitle(exists ? question.getQuestionTitle() : null);
+            row.setSourceTitle(source.getTitle());
+            row.setStemMatches(matches);
+            row.setIsRealExam(Boolean.TRUE.equals(realSources.get(source.getId())) && exists
+                    && !"KNOWLEDGE".equals(question.getContentKind()) && matches
+                    && "VERIFIED".equals(row.getMatchStatus())
+                    && "VERIFIED".equals(source.getAuthenticityStatus()));
+            row.setCollections(collections.getOrDefault(row.getId(), List.of()));
+        });
         return page;
     }
 

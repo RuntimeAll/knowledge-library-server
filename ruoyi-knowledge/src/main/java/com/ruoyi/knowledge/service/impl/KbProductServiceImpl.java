@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 /** 成品文件不可变，修改版使用新的记录与资产。 */
 @Service
@@ -50,8 +52,12 @@ public class KbProductServiceImpl implements IKbProductService {
 
     public List<KbProduct> list(KbCatalogQuery query) {
         List<KbProduct> page = mapper.selectList(query);
-        for (int i = 0; i < page.size(); i++) {
-            KbProduct row = get(page.get(i).getId());
+        if (page.isEmpty()) return page;
+        Map<Long, KbProduct> targets = new LinkedHashMap<>();
+        page.forEach(row -> targets.put(row.getId(), row));
+        catalog.enrichBatch("PRODUCT", targets);
+        for (KbProduct row : page) {
+            applyRenderSnapshot(row);
             row.setMatchedProductId(row.getId());
             java.util.ArrayList<String> reasons = new java.util.ArrayList<>();
             if (query.getOutlineId() != null
@@ -61,7 +67,6 @@ public class KbProductServiceImpl implements IKbProductService {
             if (query.getKpId() != null)
                 reasons.add("ACTUAL".equals(query.getCoverageMode()) ? "命中本版本题单考点" : "命中声明考点");
             row.setMatchReasons(reasons);
-            page.set(i, row);
         }
         return page;
     }
@@ -69,6 +74,12 @@ public class KbProductServiceImpl implements IKbProductService {
     public KbProduct get(Long id) {
         KbProduct data = found(mapper.selectById(id));
         catalog.enrich("PRODUCT", id, data);
+        applyRenderSnapshot(data);
+        data.setMatchedProductId(id);
+        return data;
+    }
+
+    private void applyRenderSnapshot(KbProduct data) {
         if (data.getRenderJobId() != null && data.getSnapshotJson() != null) {
             KbProductCatalogSnapshot snapshot =
                     com.alibaba.fastjson2.JSON.parseObject(
@@ -77,8 +88,6 @@ public class KbProductServiceImpl implements IKbProductService {
             data.setReferenceSources(snapshot.referenceSources());
             data.setActualKpIds(snapshot.declaredKpIds());
         }
-        data.setMatchedProductId(id);
-        return data;
     }
 
     public List<KbProduct> versions(Long id) {
@@ -97,7 +106,16 @@ public class KbProductServiceImpl implements IKbProductService {
             KbProduct previous = found(mapper.selectById(data.getPreviousProductId()));
             found(mapper.lockById(previous.getRootProductId()));
         }
-        if (data.getMaterialId() != null) found(materials.lockById(data.getMaterialId()));
+        if (data.getExpectedMaterialRowVersion() != null && data.getMaterialId() == null)
+            throw new ServiceException("expectedMaterialRowVersion须与materialId一起提交", 400);
+        if (data.getMaterialId() != null) {
+            KbMaterial locked = found(materials.lockById(data.getMaterialId()));
+            if (data.getExpectedMaterialRowVersion() != null) {
+                version(data.getExpectedMaterialRowVersion(), locked.getRowVersion());
+                if (data.getQuestionRefs() == null)
+                    throw new ServiceException("按专项版本归档须显式提交导出文件中的questionRefs", 400);
+            }
+        }
         KbMaterial material = null;
         if (data.getMaterialId() != null) {
             material = materialService.get(data.getMaterialId());

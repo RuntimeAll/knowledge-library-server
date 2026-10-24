@@ -6,6 +6,12 @@ import com.ruoyi.knowledge.domain.*;
 import java.util.List;
 
 public interface IKbCatalogService {
+    void enrichBatch(String kind, java.util.Map<Long, ? extends KbCatalogDocument> targets);
+
+    void enrichExamSources(java.util.Map<Long, KbSource> targets);
+
+    java.util.Map<Long, List<KbOccurrenceCollection>> collectionsBatch(List<Long> occurrenceIds);
+
     void enrich(String kind, Long id, KbCatalogDocument target);
 
     void prepareSource(KbSource target, KbSource old);

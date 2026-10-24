@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 考点管理的管理接口。正文导入和文件流量使用独立接口。 */
@@ -33,6 +36,12 @@ public class KbKpController extends BaseController {
     public TableDataInfo list(KbKp query) {
         startPage();
         return getDataTable(service.list(query));
+    }
+
+    @PreAuthorize("@ss.hasPermi('knowledge:kp:query')")
+    @GetMapping("/names")
+    public AjaxResult names(@RequestParam("ids") List<Long> ids) {
+        return success(service.names(ids));
     }
 
     @PreAuthorize("@ss.hasPermi('knowledge:kp:query')")

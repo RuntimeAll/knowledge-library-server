@@ -16,6 +16,10 @@
         <result property="remark" column="remark"/>
     </resultMap>
     <select id="selectById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id}</select>
+    <select id="selectNames" resultType="com.ruoyi.knowledge.dto.KbKpName">
+        SELECT id,name FROM kb_kp WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
     <select id="lockById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id} FOR UPDATE</select>
     <select id="selectList" resultMap="result">
         SELECT k.* FROM kb_kp k
@@ -52,6 +56,31 @@
         LEFT JOIN (kb_outline_node_kp nk JOIN kb_outline_node n ON n.id=nk.node_id)
           ON nk.kp_id=b.kp_id AND n.outline_id=b.outline_id
         WHERE b.kp_id=#{id} ORDER BY o.id,n.sort_order,n.id
+    </select>
+    <resultMap id="outlineBatchRow" type="com.ruoyi.knowledge.dto.KbKpOutlineRow">
+        <id property="kpId" column="kp_id"/>
+        <id property="outlineId" column="outline_id"/>
+        <id property="nodeId" column="node_id"/>
+        <association property="binding" javaType="com.ruoyi.knowledge.dto.KbKpOutlineBinding" notNullColumn="binding_outline_id">
+            <result property="outlineId" column="binding_outline_id"/>
+            <result property="outlineTitle" column="outline_title"/>
+            <result property="subject" column="subject"/>
+            <result property="textbookVersion" column="textbook_version"/>
+            <result property="grade" column="grade"/>
+            <result property="term" column="term"/>
+            <result property="edition" column="edition"/>
+            <result property="nodeId" column="node_id"/>
+            <result property="nodeTitle" column="node_title"/>
+        </association>
+    </resultMap>
+    <select id="selectOutlineRowsForKps" resultMap="outlineBatchRow">
+        SELECT b.kp_id,b.outline_id,o.id AS binding_outline_id,o.title AS outline_title,o.subject,
+               o.textbook_version,o.grade,o.term,o.edition,n.id AS node_id,n.title AS node_title
+        FROM kb_kp_outline b LEFT JOIN kb_outline o ON o.id=b.outline_id
+        LEFT JOIN (kb_outline_node_kp nk JOIN kb_outline_node n ON n.id=nk.node_id)
+          ON nk.kp_id=b.kp_id AND n.outline_id=b.outline_id
+        WHERE b.kp_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY b.kp_id,b.outline_id,n.sort_order,n.id
     </select>
     <insert id="insertOutline">INSERT IGNORE INTO kb_kp_outline(kp_id,outline_id) VALUES(#{kpId},#{outlineId})</insert>
     <delete id="deleteOutline">DELETE FROM kb_kp_outline WHERE kp_id=#{kpId} AND outline_id=#{outlineId}</delete>

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.knowledge.domain.KbKp;
 import com.ruoyi.knowledge.domain.KbQuestion;
+import com.ruoyi.knowledge.dto.KbQuestionQuery;
 import com.ruoyi.knowledge.mapper.KbKpMapper;
 import com.ruoyi.knowledge.mapper.KbOccurrenceMapper;
 import com.ruoyi.knowledge.mapper.KbQuestionMapper;
@@ -73,6 +74,36 @@ class KbQuestionServiceTest {
         assertThrows(ServiceException.class, () -> service.delete(new Long[] {1L}));
         verify(mapper, never()).deleteIncomingDerivations(1L);
         verify(mapper, never()).deleteById(1L);
+    }
+
+    @Test
+    void nationalRegionAliasMatchesBothStoredCodesWithoutExpandingChildren() {
+        when(mapper.examRegionCodes("CN")).thenReturn(List.of("CN", "00000000", "33010000"));
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setExamRegionCode("CN");
+        service.prepareQuery(query);
+        assertEquals("00000000", query.getExamRegionCode());
+        assertEquals(List.of("CN", "00000000"), query.getExamRegionCodes());
+    }
+
+    @Test
+    void nationalRegionDescendantsIncludeCanonicalChildrenAndHistoricalAlias() {
+        when(mapper.examRegionCodes("00000000")).thenReturn(List.of("CN", "00000000", "33010000"));
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setExamRegionCode("00000000");
+        query.setExamRegionDescendants(true);
+        service.prepareQuery(query);
+        assertEquals(List.of("CN", "00000000", "33010000"), query.getExamRegionCodes());
+    }
+
+    @Test
+    void nationalRegionAliasRemainsUsableBeforeProjectionImport() {
+        when(mapper.examRegionCodes("CN")).thenReturn(List.of("CN"));
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setExamRegionCode("CN");
+        service.prepareQuery(query);
+        assertEquals("CN", query.getExamRegionCode());
+        assertEquals(List.of("CN"), query.getExamRegionCodes());
     }
 
     @Test void imageFilterFlagIsDerivedFromStoredContentRatherThanClientMetadata() {

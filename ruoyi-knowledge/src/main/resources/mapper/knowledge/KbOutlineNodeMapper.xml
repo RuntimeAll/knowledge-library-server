@@ -30,6 +30,11 @@
     <update id="update">UPDATE kb_outline_node SET outline_id=#{outlineId},parent_id=#{parentId},title=#{title},sort_order=#{sortOrder},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_outline_node WHERE id=#{id}</delete>
     <select id="selectKpIds" resultType="long">SELECT kp_id FROM kb_outline_node_kp WHERE node_id=#{id}</select>
+    <select id="selectKpsForNodes" resultType="com.ruoyi.knowledge.dto.KbOutlineNodeKp">
+        SELECT node_id AS nodeId,kp_id AS kpId FROM kb_outline_node_kp WHERE node_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY node_id,kp_id
+    </select>
     <delete id="deleteKps">DELETE FROM kb_outline_node_kp WHERE node_id=#{id}</delete>
     <insert id="insertKp">INSERT INTO kb_outline_node_kp(node_id,kp_id) VALUES(#{id},#{kpId})</insert>
     <select id="countChildren" resultType="long">SELECT COUNT(*) FROM kb_outline_node WHERE parent_id=#{id}</select>

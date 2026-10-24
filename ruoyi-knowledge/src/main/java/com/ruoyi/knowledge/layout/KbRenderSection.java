@@ -9,6 +9,7 @@ import java.util.*;
 public class KbRenderSection {
     private String key;
     private String title;
+    private String questionLabel;
     private String dayKey;
     private List<KbRenderQuestionRef> questionRefs;
 
@@ -26,6 +27,14 @@ public class KbRenderSection {
 
     public void setTitle(String value) {
         title = value;
+    }
+
+    public String getQuestionLabel() {
+        return questionLabel;
+    }
+
+    public void setQuestionLabel(String value) {
+        questionLabel = value;
     }
 
     public String getDayKey() {

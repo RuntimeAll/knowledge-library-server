@@ -5,6 +5,7 @@ public class KbRegionLink extends CatalogFields {
     private String role;
     private String regionCode;
     private String name;
+    private String fullName;
 
     public String getRole() {
         return role;
@@ -31,5 +32,14 @@ public class KbRegionLink extends CatalogFields {
     public void setName(String value) {
         name = value;
         supplied("name");
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String value) {
+        fullName = value;
+        supplied("fullName");
     }
 }

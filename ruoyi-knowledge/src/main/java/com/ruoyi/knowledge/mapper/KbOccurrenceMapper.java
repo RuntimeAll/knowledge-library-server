@@ -14,6 +14,10 @@ public interface KbOccurrenceMapper {
     List<KbOccurrence> selectCatalogList(com.ruoyi.knowledge.catalog.KbOccurrenceQuery query);
     List<KbOccurrence> matchedExam(@org.apache.ibatis.annotations.Param("questionId") Long questionId,@org.apache.ibatis.annotations.Param("query") com.ruoyi.knowledge.dto.KbQuestionQuery query);
     List<KbOccurrence> matchedWrong(@org.apache.ibatis.annotations.Param("questionId") Long questionId,@org.apache.ibatis.annotations.Param("query") com.ruoyi.knowledge.dto.KbQuestionQuery query);
+    List<KbOccurrence> matchedExamForQuestions(@org.apache.ibatis.annotations.Param("questionIds") List<Long> questionIds, @org.apache.ibatis.annotations.Param("query") com.ruoyi.knowledge.dto.KbQuestionQuery query);
+    List<KbOccurrence> matchedWrongForQuestions(@org.apache.ibatis.annotations.Param("questionIds") List<Long> questionIds, @org.apache.ibatis.annotations.Param("query") com.ruoyi.knowledge.dto.KbQuestionQuery query);
+    List<com.ruoyi.knowledge.catalog.KbOccurrenceQuestionState> questionStates(@org.apache.ibatis.annotations.Param("ids") List<Long> ids);
+
     int insert(KbOccurrence entity);
 
     int update(KbOccurrence entity);

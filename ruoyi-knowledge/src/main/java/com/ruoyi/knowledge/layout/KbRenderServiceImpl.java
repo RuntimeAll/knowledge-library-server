@@ -202,6 +202,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
             if (section.getDayKey() != null) KbLayoutProtocol.key(section.getDayKey(), 64);
             if (KbLayoutProtocol.list(section.getQuestionRefs()).isEmpty())
                 throw new ServiceException("栏目题单不能为空", 400);
+            validateQuestionLabel(section);
             for (var ref : section.getQuestionRefs()) {
                 if (ref.getQuestionId() == null || ref.getRowVersion() == null)
                     throw new ServiceException("题目必须携带ID及版本", 400);
@@ -319,6 +320,21 @@ public class KbRenderServiceImpl implements IKbRenderService {
                 items.add(item);
             }
         return new Prepared(r, template, product, items, new ArrayList<>(taskAssets.values()));
+    }
+
+    private void validateQuestionLabel(KbRenderSection section) {
+        String label = section.getQuestionLabel();
+        KbLayoutProtocol.limit(label, 200, "题目打印标签");
+        if (label == null || label.isBlank()) {
+            section.setQuestionLabel(null);
+            return;
+        }
+        if (label.indexOf('<') >= 0 || label.indexOf('>') >= 0
+                || label.chars().anyMatch(Character::isISOControl))
+            throw new ServiceException("题目打印标签须为单行纯文本，不能包含HTML或控制字符", 400);
+        if (section.getQuestionRefs().size() != 1)
+            throw new ServiceException("带题目打印标签的栏目必须恰好包含一道题", 400);
+        section.setQuestionLabel(label.strip());
     }
 
     private void validateBodyAssets(KbQuestion q) {

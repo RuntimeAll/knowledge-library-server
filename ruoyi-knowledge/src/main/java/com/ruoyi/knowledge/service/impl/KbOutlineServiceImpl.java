@@ -10,6 +10,7 @@ import static com.ruoyi.knowledge.service.impl.KnowledgeRules.version;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.knowledge.domain.KbOutline;
 import com.ruoyi.knowledge.domain.KbOutlineNode;
+import com.ruoyi.knowledge.dto.KbOutlineNodeKp;
 import com.ruoyi.knowledge.mapper.KbKpMapper;
 import com.ruoyi.knowledge.mapper.KbOutlineMapper;
 import com.ruoyi.knowledge.mapper.KbOutlineNodeMapper;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Objects;
 import java.util.Set;
 
@@ -51,7 +54,13 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         KbOutlineNode query = new KbOutlineNode();
         query.setOutlineId(id);
         List<KbOutlineNode> values = nodes.selectList(query);
-        values.forEach(n -> n.setKpIds(nodes.selectKpIds(n.getId())));
+        if (!values.isEmpty()) {
+            List<Long> nodeIds = values.stream().map(KbOutlineNode::getId).toList();
+            Map<Long, List<Long>> kpIds = nodes.selectKpsForNodes(nodeIds).stream()
+                    .collect(Collectors.groupingBy(KbOutlineNodeKp::getNodeId,
+                            Collectors.mapping(KbOutlineNodeKp::getKpId, Collectors.toList())));
+            values.forEach(n -> n.setKpIds(kpIds.getOrDefault(n.getId(), List.of())));
+        }
         data.setNodes(values);
         return data;
     }

@@ -2,6 +2,7 @@ package com.ruoyi.knowledge.mapper;
 
 import com.ruoyi.knowledge.domain.KbDerivation;
 import com.ruoyi.knowledge.domain.KbQuestion;
+import com.ruoyi.knowledge.domain.KbQuestionKp;
 import com.ruoyi.knowledge.dto.KbQuestionQuery;
 
 import org.apache.ibatis.annotations.Param;
@@ -22,6 +23,8 @@ public interface KbQuestionMapper {
     int deleteById(Long id);
 
     List<Long> selectKpIds(Long id);
+
+    List<KbQuestionKp> selectKpsForQuestions(@Param("ids") List<Long> ids);
 
     List<Long> selectAssetIds(Long id);
 

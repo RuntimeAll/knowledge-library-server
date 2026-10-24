@@ -66,10 +66,17 @@ public class KbExportServiceImpl implements IKbExportService {
         }
         List<Long> ids;
         String title = "知识库选题导出";
+        String materialRowVersion = null;
+        List<KbExportManifest.MaterialReferenceSource> materialReferenceSources = null;
         if (request.materialId() != null) {
             materials.assertSelectionValid(request.materialId());
             KbMaterial material = materials.get(request.materialId());
             title = material.getTitle();
+            materialRowVersion = String.valueOf(material.getRowVersion());
+            materialReferenceSources = material.getReferenceSources() == null ? List.of()
+                    : material.getReferenceSources().stream()
+                            .map(ref -> new KbExportManifest.MaterialReferenceSource(
+                                    ref.getSourceId().toString(), ref.getNote())).toList();
             ids = material.getQuestionIds();
         } else {
             ids = request.questionIds();
@@ -117,7 +124,7 @@ public class KbExportServiceImpl implements IKbExportService {
                         question.getTitle(), "questions/" + question.getId() + ".html", question.getCreationKind(), question.getSourceNote(),
                         question.getContentKind(), question.getSubject(), question.getQuestionType(), question.getDifficulty(), question.getStatus(),
                         question.getLayoutMode(), question.getUnitKind(), question.getPaginationMode(), question.getLayoutNote(), question.getItemCount(), question.getHasImage(),
-                        points, sources.occurrences(question.getId(), null), lineage.getParents(), lineage.getAncestorSources()));
+                        points, sources.occurrences(question.getId(), null), lineage.getParents(), lineage.getAncestorSources(), question.getStemHash()));
             }
             for (KbAsset file : files) {
                 fileBytes += file.getFileSize();
@@ -136,7 +143,8 @@ public class KbExportServiceImpl implements IKbExportService {
             }
             put(zip, "index.html", index.outerHtml().getBytes(StandardCharsets.UTF_8));
             KbExportManifest manifest = new KbExportManifest(KbHtmlCodec.SCHEMA, origin, OffsetDateTime.now().toString(), title,
-                    request.materialId() == null ? null : request.materialId().toString(), answers, entries, fileEntries);
+                    request.materialId() == null ? null : request.materialId().toString(), answers, entries, fileEntries,
+                    materialRowVersion, materialReferenceSources);
             put(zip, "manifest.json", JSON.toJSONString(manifest, JSONWriter.Feature.PrettyFormat).getBytes(StandardCharsets.UTF_8));
             KbRecordsRequest jsonRequest = new KbRecordsRequest(KbRecordsRequest.SCHEMA,
                     "export-" + java.util.UUID.randomUUID(), null, origin, jsonRecords, List.of());
