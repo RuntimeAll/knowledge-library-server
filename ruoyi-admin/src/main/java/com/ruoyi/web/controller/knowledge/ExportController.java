@@ -27,6 +27,7 @@ public class ExportController extends BaseController {
     @PostMapping("/questions")
     @PreAuthorize("@ss.hasPermi('knowledge:question:export')")
     @Log(title = "知识库离线HTML导出", businessType = BusinessType.EXPORT)
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.export", response = byte[].class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.BINARY, mediaType = "application/zip")
     public void questions(@RequestBody KbExportRequest request, HttpServletResponse response)
             throws Exception {
         byte[] zip = exports.export(request);

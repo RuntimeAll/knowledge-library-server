@@ -33,6 +33,7 @@ public class KbQuestionController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.list", response = com.ruoyi.knowledge.domain.KbQuestion.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title", "query", "matchMode", "kpId", "expand", "hasImage", "status", "subject", "contentKind", "layoutMode", "unitKind", "paginationMode", "outlineId", "outlineNodeId", "questionType", "difficulty", "creationKind", "sourceId", "verifiedOnly", "wrongOnly", "wrongSourceId", "examSourceId", "examPurpose", "examYear", "examRegionCode", "examRegionDescendants"})
     public TableDataInfo list(KbQuestionQuery query) {
         service.prepareQuery(query);
         startPage();
@@ -41,6 +42,7 @@ public class KbQuestionController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.get", response = com.ruoyi.knowledge.domain.KbQuestion.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }

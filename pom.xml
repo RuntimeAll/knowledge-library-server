@@ -188,6 +188,27 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>10.21.4</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle.xml</configLocation>
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <includes>com/ruoyi/knowledge/**/*.java,com/ruoyi/web/core/docs/*.java,com/ruoyi/web/core/config/SwaggerConfig.java,com/ruoyi/web/controller/knowledge/*.java,com/ruoyi/web/controller/system/SysDictDataController.java,com/ruoyi/framework/config/SecurityConfig.java,com/ruoyi/framework/config/ResourcesConfig.java</includes>
+                    <failOnViolation>false</failOnViolation>
+                    <failsOnError>false</failsOnError>
+                    <linkXRef>false</linkXRef>
+                    <outputFileFormat>xml</outputFileFormat>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
@@ -204,6 +225,15 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>api-contract-verification</id>
+            <build>
+                <directory>${maven.multiModuleProjectDirectory}/../.runtime/work/prd-009/backend-build/${project.artifactId}</directory>
+            </build>
+        </profile>
+    </profiles>
 
     <repositories>
         <repository>

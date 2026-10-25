@@ -38,6 +38,7 @@ public class ImportController extends BaseController {
     @PostMapping("/records")
     @PreAuthorize("@ss.hasPermi('knowledge:import:execute')")
     @Log(title = "知识库JSON导入", businessType = BusinessType.IMPORT, isSaveRequestData = false)
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.importRecords", response = com.ruoyi.knowledge.importing.domain.KbImportBatch.class)
     public AjaxResult records(@RequestBody KbRecordsRequest request,
             @RequestHeader(value = "X-KB-Test-Run", required = false) String testRunId) {
         return success(records.importRecords(request, testRunId));
@@ -53,6 +54,7 @@ public class ImportController extends BaseController {
 
     @GetMapping("/schema")
     @PreAuthorize("@ss.hasPermi('knowledge:import:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.getImportIdentity", response = com.ruoyi.knowledge.importing.IKbImportService.Schema.class)
     public AjaxResult schema() {
         return success(imports.schema());
     }
@@ -71,6 +73,7 @@ public class ImportController extends BaseController {
 
     @GetMapping("/{batchId}")
     @PreAuthorize("@ss.hasPermi('knowledge:import:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.getImportResult", response = com.ruoyi.knowledge.importing.domain.KbImportBatch.class)
     public AjaxResult result(@PathVariable Long batchId) {
         return success(imports.get(batchId));
     }
@@ -78,6 +81,7 @@ public class ImportController extends BaseController {
     @PostMapping("/{batchId}/resume")
     @PreAuthorize("@ss.hasPermi('knowledge:import:execute')")
     @Log(title = "知识库HTML恢复", businessType = BusinessType.IMPORT, isSaveRequestData = false)
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.resumeImport", response = com.ruoyi.knowledge.importing.domain.KbImportBatch.class)
     public AjaxResult resume(
             @PathVariable Long batchId,
             @RequestHeader(value = "X-KB-Test-Run", required = false) String testRunId) {

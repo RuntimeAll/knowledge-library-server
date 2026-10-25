@@ -1,0 +1,3606 @@
+{
+  "operations": {
+    "asset.upload": {
+      "group": "asset",
+      "action": "WRITE",
+      "summary": "上传文件并取得稳定资产",
+      "responsibility": "上传来源原件、成品原件或题图，保留原字节并返回资产ID、SHA-256和状态。文件上传与后续来源/成品/题目录入分别提交；必须确认 READY 后再引用。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:asset:upload')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "文件不能为空，服务配置默认100MiB并可能被部署配置或multipart限制进一步收紧；原文件名清洗后最长255字符。QUESTION_IMAGE仅接收内容有效的PNG/JPEG/GIF/WebP。",
+        "idempotency": "提供idempotencyKey时按当前账号保存回执；相同键与原指纹返回已有资产，不按文件名或标题自动合并。未提供该键时不能依靠本入口避免重复上传。",
+        "concurrency": "上传使用状态与处理权控制；处理中或已删除可返回409，不能抢占或覆盖不匹配对象。",
+        "partialSuccess": "单文件操作；失败时可能已有资产台账/对象，不能推断文件和后续业务均已回滚。",
+        "recovery": "响应未知先用 asset.findSubmission 的 externalKey=原idempotencyKey 查询。上传中断超过10分钟可用原请求恢复；保留已得assetId，勿改键重复上传。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "上传文件为空",
+          "message": "上传文件不能为空",
+          "retryable": false,
+          "recovery": "选择非空真实文件。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "上传文件超过服务配置限制",
+          "message": "文件超过知识库上传大小限制",
+          "retryable": false,
+          "recovery": "按实际部署大小限制拆分文件或另行确认容量，不盲目延长超时。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "purpose不是服务支持的用途",
+          "message": "文件用途无效",
+          "retryable": false,
+          "recovery": "按用途说明选择允许值。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "上传时幂等键为空白或超过128字符",
+          "message": "文件幂等键长度必须为1至128字符",
+          "retryable": false,
+          "recovery": "修正新提交键；原请求恢复继续使用原键。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "QUESTION_IMAGE内容不是有效支持图像",
+          "message": "题图仅支持内容有效的PNG、JPEG、GIF或WebP文件",
+          "retryable": false,
+          "recovery": "使用真实有效题图，PDF或原件请使用原件用途。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "同一上传键对应不同内容或用途",
+          "message": "文件幂等键已用于不同内容或用途",
+          "retryable": false,
+          "recovery": "恢复原请求；确实是新文件版本时使用新键，不能覆盖原件。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "上传仍在处理或资产已删除",
+          "message": "文件正在处理或已删除，请按原幂等键查询；上传中断超过10分钟可用原请求恢复",
+          "retryable": true,
+          "recovery": "查询原键回执；仅中断超时按原请求恢复。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "assetId": "900001",
+          "purpose": "SOURCE_ORIGINAL",
+          "originalName": "示例原件.pdf",
+          "contentType": "application/pdf",
+          "fileSize": "1024",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "READY"
+        }
+      },
+      "failureExample": {
+        "code": 500,
+        "msg": "上传文件不能为空"
+      },
+      "requestExample": {
+        "file": "在文件选择框选择真实文件",
+        "purpose": "SOURCE_ORIGINAL",
+        "idempotencyKey": "docs:example:original:v1"
+      },
+      "parameterDescriptions": {
+        "file": "必填二进制文件，multipart/form-data上传；浏览器自动生成boundary，不发送JSON路径。",
+        "purpose": "必填文件用途：SOURCE_ORIGINAL来源原件、PRODUCT_ORIGINAL成品原件、QUESTION_IMAGE题图；IMPORT_HTML/IMPORT_RESOURCE为现有导入中间用途。",
+        "idempotencyKey": "可选但推荐稳定上传键，1至128字符；同一账号同键重试必须保持原文件字节、用途和文件名。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.assetId": "资产稳定ID字符串，上传后用于引用和下载。",
+        "data.externalKey": "当前账号上传提交键，可用于asset.findSubmission；未提供幂等键时可为空。",
+        "data.purpose": "文件用途，不等同来源/成品展示角色。",
+        "data.storageProvider": "实际对象存储提供方标识。",
+        "data.bucketName": "资产所属存储桶名称；不是访问凭据。",
+        "data.objectKey": "对象存储路径，仅资产定位元数据，不作为长期公开下载地址。",
+        "data.ossVersionId": "对象存储版本标识（若存在）。",
+        "data.originalName": "保留的原文件名，下载附件名使用该值。",
+        "data.contentType": "识别或记录的文件媒体类型。",
+        "data.fileSize": "原文件字节数，当前序列化为字符串。",
+        "data.sha256": "原始字节SHA-256，用于取回校验。",
+        "data.status": "资产状态；READY才可引用/下载，UPLOADING或失败/删除态不能当成功。",
+        "data.failureMessage": "上传/清理失败说明（若有）。",
+        "data.testRunId": "隔离测试批次标识（正式调用通常为空）。",
+        "data.createBy": "上传账号。",
+        "data.createTime": "资产登记时间。",
+        "data.updateTime": "状态最近更新时间。"
+      }
+    },
+    "asset.findSubmission": {
+      "group": "asset",
+      "action": "RECOVERY",
+      "summary": "按上传键查询本人回执",
+      "responsibility": "按当前账号和上传稳定键查询资产，不会返回其他账号的回执；未找到时 code=200且可能没有data。用于响应丢失后的对账。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:asset:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "externalKey必须非空且不超过128字符。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "找到后核对status、purpose与sha256；未找到不等于其他账号或实例没有该文件，先核对账号、实例和实际键。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "上传键为空或超过128字符",
+          "message": "文件幂等键长度必须为1至128字符",
+          "retryable": false,
+          "recovery": "使用上传时实际保存的稳定键。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功"
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "文件幂等键长度必须为1至128字符"
+      },
+      "requestExample": {
+        "externalKey": "docs:example:original:v1"
+      },
+      "parameterDescriptions": {
+        "externalKey": "必填，原上传multipart idempotencyKey；SDK可能派生实际键，使用保存的上传回执值。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "业务结果；by-key未找到时可能省略，不能强制假设始终存在。",
+        "data.assetId": "资产稳定ID字符串，上传后用于引用和下载。",
+        "data.externalKey": "当前账号上传提交键，可用于asset.findSubmission；未提供幂等键时可为空。",
+        "data.purpose": "文件用途，不等同来源/成品展示角色。",
+        "data.storageProvider": "实际对象存储提供方标识。",
+        "data.bucketName": "资产所属存储桶名称；不是访问凭据。",
+        "data.objectKey": "对象存储路径，仅资产定位元数据，不作为长期公开下载地址。",
+        "data.ossVersionId": "对象存储版本标识（若存在）。",
+        "data.originalName": "保留的原文件名，下载附件名使用该值。",
+        "data.contentType": "识别或记录的文件媒体类型。",
+        "data.fileSize": "原文件字节数，当前序列化为字符串。",
+        "data.sha256": "原始字节SHA-256，用于取回校验。",
+        "data.status": "资产状态；READY才可引用/下载，UPLOADING或失败/删除态不能当成功。",
+        "data.failureMessage": "上传/清理失败说明（若有）。",
+        "data.testRunId": "隔离测试批次标识（正式调用通常为空）。",
+        "data.createBy": "上传账号。",
+        "data.createTime": "资产登记时间。",
+        "data.updateTime": "状态最近更新时间。"
+      }
+    },
+    "asset.get": {
+      "group": "asset",
+      "action": "READ",
+      "summary": "读取资产元信息",
+      "responsibility": "按稳定资产ID读取用途、文件名、字节数、哈希和当前状态；元信息存在不等于文件已READY或可下载。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:asset:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "资产台账不存在",
+          "message": "文件不存在",
+          "retryable": false,
+          "recovery": "核对同一实例的真实assetId；当前此情形为业务500，不是404。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "assetId": "900001",
+          "purpose": "SOURCE_ORIGINAL",
+          "originalName": "示例原件.pdf",
+          "contentType": "application/pdf",
+          "fileSize": "1024",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "READY"
+        }
+      },
+      "failureExample": {
+        "code": 500,
+        "msg": "文件不存在"
+      },
+      "requestExample": {
+        "assetId": "900001"
+      },
+      "parameterDescriptions": {
+        "assetId": "路径资产ID，使用上传/回执返回的字符串ID。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.assetId": "资产稳定ID字符串，上传后用于引用和下载。",
+        "data.externalKey": "当前账号上传提交键，可用于asset.findSubmission；未提供幂等键时可为空。",
+        "data.purpose": "文件用途，不等同来源/成品展示角色。",
+        "data.storageProvider": "实际对象存储提供方标识。",
+        "data.bucketName": "资产所属存储桶名称；不是访问凭据。",
+        "data.objectKey": "对象存储路径，仅资产定位元数据，不作为长期公开下载地址。",
+        "data.ossVersionId": "对象存储版本标识（若存在）。",
+        "data.originalName": "保留的原文件名，下载附件名使用该值。",
+        "data.contentType": "识别或记录的文件媒体类型。",
+        "data.fileSize": "原文件字节数，当前序列化为字符串。",
+        "data.sha256": "原始字节SHA-256，用于取回校验。",
+        "data.status": "资产状态；READY才可引用/下载，UPLOADING或失败/删除态不能当成功。",
+        "data.failureMessage": "上传/清理失败说明（若有）。",
+        "data.testRunId": "隔离测试批次标识（正式调用通常为空）。",
+        "data.createBy": "上传账号。",
+        "data.createTime": "资产登记时间。",
+        "data.updateTime": "状态最近更新时间。"
+      }
+    },
+    "asset.download": {
+      "group": "asset",
+      "action": "EXPORT",
+      "summary": "下载资产原字节",
+      "responsibility": "以附件方式返回原始文件字节，成功Content-Type为application/octet-stream。生成任务产物还检查生成下载权限、任务归属与完整成功状态。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:asset:download')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "只读原字节；对生成任务产物同时校验任务归属、knowledge:render:download及SUCCEEDED状态。",
+        "partialSuccess": "连接中断可能只收到部分字节，不能当作下载成功。",
+        "recovery": "先检查Content-Type/JSON业务错误，再保存文件；传输失败重新下载并核对完整长度与SHA-256。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "资产台账不存在",
+          "message": "文件不存在",
+          "retryable": false,
+          "recovery": "核对当前实例的实际资产ID。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "资产未READY或已删除",
+          "message": "文件尚未就绪或已删除",
+          "retryable": false,
+          "recovery": "先查询资产状态；不要把JSON错误保存成文件。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "资产属于生成任务但无生成下载权限或不是本人任务",
+          "message": "缺少生成产物下载权限",
+          "retryable": false,
+          "recovery": "核对knowledge:render:download及任务归属。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "生成任务未完整成功",
+          "message": "任务尚未完整成功",
+          "retryable": true,
+          "recovery": "查询生成任务，完整成功后下载。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "对象存储读取暂时失败",
+          "message": "OSS文件读取失败，请稍后重试",
+          "retryable": true,
+          "recovery": "检查下载字节是否完整，稍后重取并核对哈希。"
+        }
+      ],
+      "successExample": "二进制文件流（application/octet-stream），Content-Disposition为附件；下载后与资产元信息sha256核对。",
+      "failureExample": {
+        "code": 500,
+        "msg": "文件不存在"
+      },
+      "requestExample": {
+        "assetId": "900001"
+      },
+      "parameterDescriptions": {
+        "assetId": "路径资产ID；必须READY。若是后台生成产物，还需通过生成任务下载校验。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "错误响应": "失败时为JSON code/msg，先检查Content-Type，不能另存为二进制文件。"
+      }
+    },
+    "source.list": {
+      "group": "source",
+      "action": "READ",
+      "summary": "分页检索来源",
+      "responsibility": "检索真实来源与其资料描述、声明/实际考点、教材范围及考试信息；来源与题目独立保存，命中来源不自动认定题目为真题。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "年份边界未指定所属年份字段",
+          "message": "年份范围需要yearField",
+          "retryable": false,
+          "recovery": "传yearField及至少一个边界，不传无语义year。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "教材节点与教材不一致",
+          "message": "筛选章节不属于指定教材",
+          "retryable": false,
+          "recovery": "从同一本大纲详情取得节点ID。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "来源查询混入成品专属条件",
+          "message": "来源不支持成品条件",
+          "retryable": false,
+          "recovery": "移除audienceRole/provenanceStatus/materialId/rootProductId及LATEST条件。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "年份范围需要yearField"
+      },
+      "requestExample": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "subject": "MATH"
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "title": "标题关键词。",
+        "subject": "学科代码，MATH或SCIENCE等当前kb_subject有效值。",
+        "resourceType": "资料形态代码，取kb_resource_type。",
+        "catalogStatus": "资料描述状态，取kb_catalog_status；READY不等于已抽题或已审批。",
+        "sourceKind": "旧来源类型筛选，仅来源有意义；新录入以profile.resourceType为准。",
+        "extractionStatus": "来源整理/抽取状态，取kb_extraction_status；不表示真实性核实。",
+        "authenticityStatus": "来源考试身份核实状态；成品不支持该条件。",
+        "chapterMatch": "EXACT默认；SUBTREE扩展目标子树，具体章节匹配不把CATALOG_ONLY当覆盖。",
+        "textbookVersion": "教材版本，与教材范围同一条关系内匹配；不是字典值。",
+        "grade": "教材年级G1至G9，与同一条教材范围共同匹配。",
+        "term": "教材学期FIRST/SECOND，与同一条教材范围共同匹配。",
+        "yearField": "年份字段：publishedYear/preparedYear；来源另可examYear/academicYearStart，须至少一个上下界。",
+        "regionRole": "地区角色ORIGIN/APPLICABLE/EXAM_SCOPE；须配regionCode，成品仅APPLICABLE。",
+        "regionCode": "八位字符串地区码；保留前导零，CN为现有全国兼容输入。",
+        "coverageMode": "DECLARED默认查资料声明考点；ACTUAL查真实关联题目的当前考点。",
+        "examPurpose": "来源考试用途，取kb_exam_type；成品不支持。",
+        "organizerLevel": "考试组织层级，取kb_organizer_level；成品不支持。",
+        "paperNature": "原卷性质，取kb_paper_nature；成品不支持。",
+        "audienceRole": "成品使用角色，取kb_audience_role；来源不支持。",
+        "provenanceStatus": "成品题单溯源程度UNKNOWN/DECLARED/TRACEABLE；来源不支持。",
+        "historyMode": "成品版本ANY默认/LATEST仅最新链头；来源仅ANY。",
+        "outlineId": "教材大纲ID，与章节、版本、年级、学期在同条范围关系内匹配。",
+        "outlineNodeId": "实际章节节点ID；与outlineId并传时必须属于该教材。",
+        "kpId": "考点ID，结合coverageMode选择声明或实际覆盖。",
+        "rootProductId": "成品版本链根ID；来源不支持。",
+        "materialId": "生成时专项ID筛选，仅成品。",
+        "yearFrom": "指定yearField的起始年份，1至9999。",
+        "yearTo": "指定yearField的结束年份，1至9999，不小于yearFrom。",
+        "examYear": "来源实际考试年份，整数；成品不支持。",
+        "academicYearStart": "来源学年起始年，整数；成品不支持。",
+        "regionDescendants": "true扩展regionCode下级；须提供regionCode。",
+        "includeNationwide": "true同时匹配全国适用资料，仅APPLICABLE角色可用。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].profile": "资料描述对象，见其字段。",
+        "rows[].outlineScopes": "实际资料级教材范围集合。",
+        "rows[].declaredKpIds": "资料级声明的考点ID集合。",
+        "rows[].actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "rows[].regions": "地区角色及地区元信息集合。",
+        "rows[].readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "rows[].matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "rows[].title": "来源资料标题。",
+        "rows[].sourceKind": "兼容旧来源类型，由资源形态映射。",
+        "rows[].extractionStatus": "原件整理/抽题状态，与真实性核实独立。",
+        "rows[].originUrl": "原始来源线索URL。",
+        "rows[].originNote": "来源说明。",
+        "rows[].assetIds": "来源关联资产ID集合。",
+        "rows[].attachments": "带原件/摘录/证据角色的资产关系。",
+        "rows[].examDetail": "考试来源身份、范围与核实资料；非考试来源可为空。",
+        "rows[].subject": "旧来源学科投影，完整资料描述以profile为准。",
+        "rows[].grade": "旧考试年级投影。",
+        "rows[].examType": "旧考试用途投影。",
+        "rows[].examYear": "旧考试年份投影。",
+        "rows[].schoolName": "旧学校信息投影。",
+        "rows[].scopeNote": "旧范围说明投影。",
+        "rows[].authenticityStatus": "旧来源核实状态投影。",
+        "rows[].verificationNote": "旧来源核实说明投影。",
+        "rows[].profile.description": "资料描述，不替代题目正文。",
+        "rows[].profile.subject": "资料学科。",
+        "rows[].profile.resourceType": "资料形态。",
+        "rows[].profile.originKind": "资料来历类型。",
+        "rows[].profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "rows[].profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "rows[].profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "rows[].profile.publishedYear": "实际出版年，未知可空。",
+        "rows[].profile.preparedYear": "实际编制年，未知可空。",
+        "rows[].profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "rows[].profile.authorName": "作者名称。",
+        "rows[].profile.publisherName": "出版者名称。",
+        "rows[].profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "rows[].outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "rows[].outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "rows[].outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "rows[].outlineScopes[].note": "范围核对说明。",
+        "rows[].outlineScopes[].outlineTitle": "教材大纲名称。",
+        "rows[].outlineScopes[].subject": "该教材学科。",
+        "rows[].outlineScopes[].textbookVersion": "教材版本。",
+        "rows[].outlineScopes[].grade": "教材年级。",
+        "rows[].outlineScopes[].term": "教材学期。",
+        "rows[].outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "rows[].regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "rows[].regions[].regionCode": "地区编码字符串，保留前导零。",
+        "rows[].regions[].name": "地区名称。",
+        "rows[].regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "rows[].attachments[].assetId": "原件/摘录/证据资产ID。",
+        "rows[].attachments[].sourceId": "所属来源ID。",
+        "rows[].attachments[].role": "ORIGINAL/EXCERPT/EVIDENCE附件角色。",
+        "rows[].examDetail.examPurpose": "考试用途。",
+        "rows[].examDetail.examYear": "实际考试年。",
+        "rows[].examDetail.academicYearStart": "学年起始年。",
+        "rows[].examDetail.authenticityStatus": "来源考试身份核实状态。",
+        "rows[].examDetail.identityFingerprint": "核实所绑定的考试身份指纹。",
+        "rows[].examDetail.legacyVerification": "是否是未具备新指纹的旧核实记录。",
+        "rows[].examDetail.verificationNote": "核实依据。",
+        "rows[].examDetail.evidenceAssetId": "核实证据资产。"
+      }
+    },
+    "product.list": {
+      "group": "product",
+      "action": "READ",
+      "summary": "分页检索成品",
+      "responsibility": "按同一成品版本的资料描述、角色、题单范围和版本链检索可复用文件；返回的资产与匹配事实属于该行版本。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:product:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "年份边界未指定所属年份字段",
+          "message": "年份范围需要yearField",
+          "retryable": false,
+          "recovery": "传yearField及至少一个边界，不传无语义year。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "教材节点与教材不一致",
+          "message": "筛选章节不属于指定教材",
+          "retryable": false,
+          "recovery": "从同一本大纲详情取得节点ID。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "成品查询混入考试身份条件",
+          "message": "成品不支持考试条件",
+          "retryable": false,
+          "recovery": "移除examPurpose/examYear/academicYearStart/organizerLevel/paperNature/authenticityStatus等考试条件。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "年份范围需要yearField"
+      },
+      "requestExample": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "subject": "MATH",
+        "historyMode": "LATEST"
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "title": "标题关键词。",
+        "subject": "学科代码，MATH或SCIENCE等当前kb_subject有效值。",
+        "resourceType": "资料形态代码，取kb_resource_type。",
+        "catalogStatus": "资料描述状态，取kb_catalog_status；READY不等于已抽题或已审批。",
+        "sourceKind": "旧来源类型筛选，仅来源有意义；新录入以profile.resourceType为准。",
+        "extractionStatus": "来源整理/抽取状态，取kb_extraction_status；不表示真实性核实。",
+        "authenticityStatus": "来源考试身份核实状态；成品不支持该条件。",
+        "chapterMatch": "EXACT默认；SUBTREE扩展目标子树，具体章节匹配不把CATALOG_ONLY当覆盖。",
+        "textbookVersion": "教材版本，与教材范围同一条关系内匹配；不是字典值。",
+        "grade": "教材年级G1至G9，与同一条教材范围共同匹配。",
+        "term": "教材学期FIRST/SECOND，与同一条教材范围共同匹配。",
+        "yearField": "年份字段：publishedYear/preparedYear；来源另可examYear/academicYearStart，须至少一个上下界。",
+        "regionRole": "地区角色ORIGIN/APPLICABLE/EXAM_SCOPE；须配regionCode，成品仅APPLICABLE。",
+        "regionCode": "八位字符串地区码；保留前导零，CN为现有全国兼容输入。",
+        "coverageMode": "DECLARED默认查资料声明考点；ACTUAL查真实关联题目的当前考点。",
+        "examPurpose": "来源考试用途，取kb_exam_type；成品不支持。",
+        "organizerLevel": "考试组织层级，取kb_organizer_level；成品不支持。",
+        "paperNature": "原卷性质，取kb_paper_nature；成品不支持。",
+        "audienceRole": "成品使用角色，取kb_audience_role；来源不支持。",
+        "provenanceStatus": "成品题单溯源程度UNKNOWN/DECLARED/TRACEABLE；来源不支持。",
+        "historyMode": "成品版本ANY默认/LATEST仅最新链头；来源仅ANY。",
+        "outlineId": "教材大纲ID，与章节、版本、年级、学期在同条范围关系内匹配。",
+        "outlineNodeId": "实际章节节点ID；与outlineId并传时必须属于该教材。",
+        "kpId": "考点ID，结合coverageMode选择声明或实际覆盖。",
+        "rootProductId": "成品版本链根ID；来源不支持。",
+        "materialId": "生成时专项ID筛选，仅成品。",
+        "yearFrom": "指定yearField的起始年份，1至9999。",
+        "yearTo": "指定yearField的结束年份，1至9999，不小于yearFrom。",
+        "examYear": "来源实际考试年份，整数；成品不支持。",
+        "academicYearStart": "来源学年起始年，整数；成品不支持。",
+        "regionDescendants": "true扩展regionCode下级；须提供regionCode。",
+        "includeNationwide": "true同时匹配全国适用资料，仅APPLICABLE角色可用。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].profile": "资料描述对象，见其字段。",
+        "rows[].outlineScopes": "实际资料级教材范围集合。",
+        "rows[].declaredKpIds": "资料级声明的考点ID集合。",
+        "rows[].actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "rows[].regions": "地区角色及地区元信息集合。",
+        "rows[].readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "rows[].matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "rows[].title": "成品标题。",
+        "rows[].assetId": "实际成品文件资产ID，取回文件使用asset.download。",
+        "rows[].materialId": "生成时关联专项ID，不能当当前题单快照的替代。",
+        "rows[].previousProductId": "同角色上一版成品ID。",
+        "rows[].rootProductId": "该版本链根成品ID。",
+        "rows[].versionNo": "当前链内版本序号，数字。",
+        "rows[].matchedProductId": "当前查询命中的实际成品版本ID。",
+        "rows[].snapshotJson": "创建时冻结的资料/题单/参考来源快照字符串，不是完整历史正文库。",
+        "rows[].renderJobId": "后台生成任务ID（若为生成产物）。",
+        "rows[].renderOutputKey": "后台冻结输出角色键（若有）。",
+        "rows[].questionRefs": "文件实际对应的冻结有序题单。",
+        "rows[].referenceSources": "创建时冻结的参考来源集合。",
+        "rows[].profile.description": "资料描述，不替代题目正文。",
+        "rows[].profile.subject": "资料学科。",
+        "rows[].profile.resourceType": "资料形态。",
+        "rows[].profile.originKind": "资料来历类型。",
+        "rows[].profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "rows[].profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "rows[].profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "rows[].profile.publishedYear": "实际出版年，未知可空。",
+        "rows[].profile.preparedYear": "实际编制年，未知可空。",
+        "rows[].profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "rows[].profile.authorName": "作者名称。",
+        "rows[].profile.publisherName": "出版者名称。",
+        "rows[].profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "rows[].outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "rows[].outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "rows[].outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "rows[].outlineScopes[].note": "范围核对说明。",
+        "rows[].outlineScopes[].outlineTitle": "教材大纲名称。",
+        "rows[].outlineScopes[].subject": "该教材学科。",
+        "rows[].outlineScopes[].textbookVersion": "教材版本。",
+        "rows[].outlineScopes[].grade": "教材年级。",
+        "rows[].outlineScopes[].term": "教材学期。",
+        "rows[].outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "rows[].regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "rows[].regions[].regionCode": "地区编码字符串，保留前导零。",
+        "rows[].regions[].name": "地区名称。",
+        "rows[].regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "rows[].questionRefs[].seq": "从1连续的实际文件题序。",
+        "rows[].questionRefs[].questionId": "冻结引用题目ID。",
+        "rows[].questionRefs[].questionRowVersion": "该文件对应题目版本。",
+        "rows[].questionRefs[].stemHash": "该版本题干指纹。",
+        "rows[].questionRefs[].itemLocator": "文件内题位。",
+        "rows[].questionRefs[].questionTitle": "读取时题目标题投影，不能还原历史正文。",
+        "rows[].referenceSources[].sourceId": "参考来源ID。",
+        "rows[].referenceSources[].note": "引用说明。",
+        "rows[].referenceSources[].sourceTitle": "来源标题投影。"
+      }
+    },
+    "source.get": {
+      "group": "source",
+      "action": "READ",
+      "summary": "读取来源详情",
+      "responsibility": "读取来源基础信息、描述、教材/地区范围及引用；保留原件稳定ID。来源真实性和题目当前出处核实是不同层次。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900010",
+          "rowVersion": "0",
+          "title": "示例数学原件",
+          "extractionStatus": "ORIGINAL_ONLY",
+          "attachments": [
+            {
+              "assetId": "900001",
+              "role": "ORIGINAL"
+            }
+          ],
+          "profile": {
+            "subject": "MATH",
+            "resourceType": "HANDOUT",
+            "originKind": "UNKNOWN",
+            "catalogStatus": "DRAFT"
+          },
+          "outlineScopes": [],
+          "declaredKpIds": [],
+          "actualKpIds": [],
+          "regions": []
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900010"
+      },
+      "parameterDescriptions": {
+        "id": "路径来源ID，使用登记/检索回执的字符串ID。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "来源资料标题。",
+        "data.sourceKind": "兼容旧来源类型，由资源形态映射。",
+        "data.extractionStatus": "原件整理/抽题状态，与真实性核实独立。",
+        "data.originUrl": "原始来源线索URL。",
+        "data.originNote": "来源说明。",
+        "data.assetIds": "来源关联资产ID集合。",
+        "data.attachments": "带原件/摘录/证据角色的资产关系。",
+        "data.examDetail": "考试来源身份、范围与核实资料；非考试来源可为空。",
+        "data.subject": "旧来源学科投影，完整资料描述以profile为准。",
+        "data.grade": "旧考试年级投影。",
+        "data.examType": "旧考试用途投影。",
+        "data.examYear": "旧考试年份投影。",
+        "data.schoolName": "旧学校信息投影。",
+        "data.scopeNote": "旧范围说明投影。",
+        "data.authenticityStatus": "旧来源核实状态投影。",
+        "data.verificationNote": "旧来源核实说明投影。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.attachments[].assetId": "原件/摘录/证据资产ID。",
+        "data.attachments[].sourceId": "所属来源ID。",
+        "data.attachments[].role": "ORIGINAL/EXCERPT/EVIDENCE附件角色。",
+        "data.examDetail.examPurpose": "考试用途。",
+        "data.examDetail.examYear": "实际考试年。",
+        "data.examDetail.academicYearStart": "学年起始年。",
+        "data.examDetail.authenticityStatus": "来源考试身份核实状态。",
+        "data.examDetail.identityFingerprint": "核实所绑定的考试身份指纹。",
+        "data.examDetail.legacyVerification": "是否是未具备新指纹的旧核实记录。",
+        "data.examDetail.verificationNote": "核实依据。",
+        "data.examDetail.evidenceAssetId": "核实证据资产。"
+      }
+    },
+    "source.findSubmission": {
+      "group": "source",
+      "action": "RECOVERY",
+      "summary": "查询本人来源提交回执",
+      "responsibility": "按当前账号、来源操作类型和稳定外部键读回已提交记录；未找到时成功响应可能省略data，不代表全库不存在。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "查询键非空且不超过160字符；以原提交键精确查询。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "确认账号和实例后读回id/rowVersion；未找到且确认未提交时才以原内容原键重发登记。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "缺少稳定外部键",
+          "message": "稳定外部标识不能为空",
+          "retryable": false,
+          "recovery": "使用保存的原externalKey。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功"
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "稳定外部标识不能为空"
+      },
+      "requestExample": {
+        "externalKey": "docs:example:source:v1"
+      },
+      "parameterDescriptions": {
+        "externalKey": "必填，登记时的同一externalKey，非空且最多160字符。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "业务结果；by-key未找到时可能省略，不能强制假设始终存在。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "来源资料标题。",
+        "data.sourceKind": "兼容旧来源类型，由资源形态映射。",
+        "data.extractionStatus": "原件整理/抽题状态，与真实性核实独立。",
+        "data.originUrl": "原始来源线索URL。",
+        "data.originNote": "来源说明。",
+        "data.assetIds": "来源关联资产ID集合。",
+        "data.attachments": "带原件/摘录/证据角色的资产关系。",
+        "data.examDetail": "考试来源身份、范围与核实资料；非考试来源可为空。",
+        "data.subject": "旧来源学科投影，完整资料描述以profile为准。",
+        "data.grade": "旧考试年级投影。",
+        "data.examType": "旧考试用途投影。",
+        "data.examYear": "旧考试年份投影。",
+        "data.schoolName": "旧学校信息投影。",
+        "data.scopeNote": "旧范围说明投影。",
+        "data.authenticityStatus": "旧来源核实状态投影。",
+        "data.verificationNote": "旧来源核实说明投影。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.attachments[].assetId": "原件/摘录/证据资产ID。",
+        "data.attachments[].sourceId": "所属来源ID。",
+        "data.attachments[].role": "ORIGINAL/EXCERPT/EVIDENCE附件角色。",
+        "data.examDetail.examPurpose": "考试用途。",
+        "data.examDetail.examYear": "实际考试年。",
+        "data.examDetail.academicYearStart": "学年起始年。",
+        "data.examDetail.authenticityStatus": "来源考试身份核实状态。",
+        "data.examDetail.identityFingerprint": "核实所绑定的考试身份指纹。",
+        "data.examDetail.legacyVerification": "是否是未具备新指纹的旧核实记录。",
+        "data.examDetail.verificationNote": "核实依据。",
+        "data.examDetail.evidenceAssetId": "核实证据资产。"
+      }
+    },
+    "product.get": {
+      "group": "product",
+      "action": "READ",
+      "summary": "读取成品详情",
+      "responsibility": "读取成品基础信息、描述、教材/地区范围及引用；保留原件稳定ID。题单/文件和生成快照为创建时冻结事实，元信息更新不改原文件。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:product:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900020",
+          "rowVersion": "0",
+          "title": "示例学生练习原件",
+          "assetId": "900002",
+          "versionNo": 1,
+          "profile": {
+            "subject": "MATH",
+            "resourceType": "WORKSHEET",
+            "catalogStatus": "DRAFT",
+            "audienceRole": "STUDENT",
+            "provenanceStatus": "UNKNOWN"
+          },
+          "questionRefs": [],
+          "referenceSources": []
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900020"
+      },
+      "parameterDescriptions": {
+        "id": "路径成品ID，使用登记/检索回执的字符串ID。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "成品标题。",
+        "data.assetId": "实际成品文件资产ID，取回文件使用asset.download。",
+        "data.materialId": "生成时关联专项ID，不能当当前题单快照的替代。",
+        "data.previousProductId": "同角色上一版成品ID。",
+        "data.rootProductId": "该版本链根成品ID。",
+        "data.versionNo": "当前链内版本序号，数字。",
+        "data.matchedProductId": "当前查询命中的实际成品版本ID。",
+        "data.snapshotJson": "创建时冻结的资料/题单/参考来源快照字符串，不是完整历史正文库。",
+        "data.renderJobId": "后台生成任务ID（若为生成产物）。",
+        "data.renderOutputKey": "后台冻结输出角色键（若有）。",
+        "data.questionRefs": "文件实际对应的冻结有序题单。",
+        "data.referenceSources": "创建时冻结的参考来源集合。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.questionRefs[].seq": "从1连续的实际文件题序。",
+        "data.questionRefs[].questionId": "冻结引用题目ID。",
+        "data.questionRefs[].questionRowVersion": "该文件对应题目版本。",
+        "data.questionRefs[].stemHash": "该版本题干指纹。",
+        "data.questionRefs[].itemLocator": "文件内题位。",
+        "data.questionRefs[].questionTitle": "读取时题目标题投影，不能还原历史正文。",
+        "data.referenceSources[].sourceId": "参考来源ID。",
+        "data.referenceSources[].note": "引用说明。",
+        "data.referenceSources[].sourceTitle": "来源标题投影。"
+      }
+    },
+    "product.findSubmission": {
+      "group": "product",
+      "action": "RECOVERY",
+      "summary": "查询本人成品提交回执",
+      "responsibility": "按当前账号、成品操作类型和稳定外部键读回已提交记录；未找到时成功响应可能省略data，不代表全库不存在。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:product:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "查询键非空且不超过160字符；以原提交键精确查询。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "确认账号和实例后读回id/rowVersion；未找到且确认未提交时才以原内容原键重发登记。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "缺少稳定外部键",
+          "message": "稳定外部标识不能为空",
+          "retryable": false,
+          "recovery": "使用保存的原externalKey。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功"
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "稳定外部标识不能为空"
+      },
+      "requestExample": {
+        "externalKey": "docs:example:product:v1"
+      },
+      "parameterDescriptions": {
+        "externalKey": "必填，登记时的同一externalKey，非空且最多160字符。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "业务结果；by-key未找到时可能省略，不能强制假设始终存在。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "成品标题。",
+        "data.assetId": "实际成品文件资产ID，取回文件使用asset.download。",
+        "data.materialId": "生成时关联专项ID，不能当当前题单快照的替代。",
+        "data.previousProductId": "同角色上一版成品ID。",
+        "data.rootProductId": "该版本链根成品ID。",
+        "data.versionNo": "当前链内版本序号，数字。",
+        "data.matchedProductId": "当前查询命中的实际成品版本ID。",
+        "data.snapshotJson": "创建时冻结的资料/题单/参考来源快照字符串，不是完整历史正文库。",
+        "data.renderJobId": "后台生成任务ID（若为生成产物）。",
+        "data.renderOutputKey": "后台冻结输出角色键（若有）。",
+        "data.questionRefs": "文件实际对应的冻结有序题单。",
+        "data.referenceSources": "创建时冻结的参考来源集合。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.questionRefs[].seq": "从1连续的实际文件题序。",
+        "data.questionRefs[].questionId": "冻结引用题目ID。",
+        "data.questionRefs[].questionRowVersion": "该文件对应题目版本。",
+        "data.questionRefs[].stemHash": "该版本题干指纹。",
+        "data.questionRefs[].itemLocator": "文件内题位。",
+        "data.questionRefs[].questionTitle": "读取时题目标题投影，不能还原历史正文。",
+        "data.referenceSources[].sourceId": "参考来源ID。",
+        "data.referenceSources[].note": "引用说明。",
+        "data.referenceSources[].sourceTitle": "来源标题投影。"
+      }
+    },
+    "source.register": {
+      "group": "source",
+      "action": "WRITE",
+      "summary": "幂等登记来源原件",
+      "responsibility": "在已有READY原件资产上建立来源记录及资料描述，可先以DRAFT保存待整理原件。登记来源不等于完成抽题、考试核实或题目批准。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:add') and @ss.hasPermi('knowledge:source:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "externalKey 1至160字符且无首尾空格；标题最多300字符。引用必须真实存在且资源READY，READY描述受教材/角色等完整性校验。示例ID须替换。",
+        "idempotency": "同账号、同操作类型、同externalKey且聚合内容一致复用原记录；同键改内容返回409。业务与提交回执在同一事务。",
+        "concurrency": "提交键认领与读取回执在事务中锁定；新登记不能传已有业务ID，后续修改使用带rowVersion的维护入口。",
+        "partialSuccess": "单个聚合登记事务；文件上传是之前的独立步骤，登记失败不会自动删除已上传资产。",
+        "recovery": "提交响应未知先按本人externalKey查询；已成功则复用id，确需新版本用新键，不随机换键重试同一事实。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "请求缺少source基础对象",
+          "message": "缺少来源内容",
+          "retryable": false,
+          "recovery": "提供source及必要标题、真实原件引用。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "同账号同来源键的内容已改变",
+          "message": "同一外部标识的内容已变化；新版本请使用新的标识",
+          "retryable": false,
+          "recovery": "恢复原请求以读回；真正新事实使用新键，修改旧记录走带版本维护。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900010",
+          "rowVersion": "0",
+          "title": "示例数学原件",
+          "extractionStatus": "ORIGINAL_ONLY",
+          "attachments": [
+            {
+              "assetId": "900001",
+              "role": "ORIGINAL"
+            }
+          ],
+          "profile": {
+            "subject": "MATH",
+            "resourceType": "HANDOUT",
+            "originKind": "UNKNOWN",
+            "catalogStatus": "DRAFT"
+          },
+          "outlineScopes": [],
+          "declaredKpIds": [],
+          "actualKpIds": [],
+          "regions": []
+        }
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "缺少来源内容"
+      },
+      "requestExample": {
+        "externalKey": "docs:example:source:v1",
+        "source": {
+          "title": "示例数学原件",
+          "extractionStatus": "ORIGINAL_ONLY",
+          "attachments": [
+            {
+              "assetId": "900001",
+              "role": "ORIGINAL"
+            }
+          ]
+        },
+        "profile": {
+          "subject": "MATH",
+          "resourceType": "HANDOUT",
+          "originKind": "UNKNOWN",
+          "catalogStatus": "DRAFT"
+        },
+        "outlineScopes": [],
+        "declaredKpIds": [],
+        "regions": []
+      },
+      "parameterDescriptions": {
+        "profile": "聚合顶层资料描述；不要与source/product内部扩展重复填写。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "profile.description": "说明文字，最多10000字符。",
+        "profile.subject": "学科代码；教材范围与考点须同学科。",
+        "profile.resourceType": "资料形态代码；来源旧sourceKind由此映射。",
+        "profile.originKind": "来历AUTHORED/PUBLISHED/COLLECTED/OTHER/UNKNOWN等有效字典值。",
+        "profile.catalogStatus": "DRAFT/READY/RETIRED资料描述状态；READY只说明描述满足当前规则。",
+        "profile.authorName": "作者姓名，最多200字符；未知省略。",
+        "profile.publisherName": "出版者，最多200字符；未知省略。",
+        "profile.publishedYear": "实际出版年份，1至9999；不从文件修改时间猜测。",
+        "profile.preparedYear": "实际编制年份，1至9999。",
+        "profile.acquiredAt": "来源取得时间，ISO本地日期时间；仅来源使用。",
+        "profile.audienceRole": "成品使用角色STUDENT/INLINE_ANSWER/ANSWER_ONLY/TEACHER/COMBINED，来源不使用。",
+        "profile.provenanceStatus": "成品题单UNKNOWN/DECLARED/TRACEABLE；后两者要求真实题单。",
+        "outlineScopes": "资料级教材适用范围，不能冒充逐题出处。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "outlineScopes[].outlineId": "真实同学科TEXTBOOK大纲ID。",
+        "outlineScopes[].scopeKind": "CATALOG_ONLY只确认册别、WHOLE_BOOK全册、CHAPTERS明确章节。",
+        "outlineScopes[].nodeIds": "CHAPTERS时非空，节点须属同一outlineId；其余两种范围为空数组。",
+        "outlineScopes[].note": "范围核对说明。",
+        "declaredKpIds": "资料级声明考点ID数组；不替代实际抽取题目所关联的考点。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "regions": "资料地区关系；未知用空数组，不自造地区码。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "regions[].role": "来源ORIGIN/APPLICABLE/EXAM_SCOPE；成品仅APPLICABLE。",
+        "regions[].regionCode": "实际八位字符串编码，保留前导零；CN输入兼容为全国。",
+        "externalKey": "必填稳定外部标识，1至160字符、无首尾空格；相同请求重试保持不变。",
+        "source": "必填来源基础对象；新建不能指定已有id，扩展信息放聚合顶层。",
+        "source.title": "必填来源标题，最多300字符。",
+        "source.extractionStatus": "整理状态，如仅原件ORIGINAL_ONLY；不是题目核实状态。",
+        "source.originUrl": "已知原始来源URL，用于来源说明，不作为题图地址。",
+        "source.originNote": "原始来源备注，按事实填写。",
+        "source.attachments": "已上传的原件/摘录/证据资产引用。",
+        "source.attachments[].assetId": "READY原件资产ID，可引用SOURCE_ORIGINAL或PRODUCT_ORIGINAL；不能用题图作原件。",
+        "source.attachments[].role": "ORIGINAL原件、EXCERPT摘录、EVIDENCE证据，非学生/答案角色。",
+        "source.assetIds": "旧简化原件ID集合；新接入优先attachments以明确角色。",
+        "examDetail": "仅考试来源的考试身份资料；普通登记不授予核实权限。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "examDetail.examPurpose": "考试用途kb_exam_type。",
+        "examDetail.grade": "考试年级G1至G9。",
+        "examDetail.term": "考试学期FIRST/SECOND。",
+        "examDetail.examYear": "实际考试年份；未知省略。",
+        "examDetail.academicYearStart": "学年起始年份。",
+        "examDetail.examDate": "实际考试日期，ISO日期。",
+        "examDetail.schoolName": "实际学校名。",
+        "examDetail.scopeNote": "实际考试覆盖范围说明。",
+        "examDetail.entranceStage": "升学阶段字典值。",
+        "examDetail.organizerLevel": "组织层级字典值。",
+        "examDetail.paperNature": "原卷性质字典值。",
+        "examDetail.sessionLabel": "考试届次/场次说明。",
+        "examDetail.paperCode": "试卷代码。",
+        "examDetail.organizerName": "组织者名称。",
+        "examDetail.authenticityStatus": "真实性核实状态；普通登记不可绕过核实权限。",
+        "examDetail.verificationNote": "核实依据说明。",
+        "examDetail.evidenceAssetId": "已关联证据资产ID。",
+        "source.id": "新登记入口不得指定已有来源ID；修改旧来源走带版本维护接口。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "来源资料标题。",
+        "data.sourceKind": "兼容旧来源类型，由资源形态映射。",
+        "data.extractionStatus": "原件整理/抽题状态，与真实性核实独立。",
+        "data.originUrl": "原始来源线索URL。",
+        "data.originNote": "来源说明。",
+        "data.assetIds": "来源关联资产ID集合。",
+        "data.attachments": "带原件/摘录/证据角色的资产关系。",
+        "data.examDetail": "考试来源身份、范围与核实资料；非考试来源可为空。",
+        "data.subject": "旧来源学科投影，完整资料描述以profile为准。",
+        "data.grade": "旧考试年级投影。",
+        "data.examType": "旧考试用途投影。",
+        "data.examYear": "旧考试年份投影。",
+        "data.schoolName": "旧学校信息投影。",
+        "data.scopeNote": "旧范围说明投影。",
+        "data.authenticityStatus": "旧来源核实状态投影。",
+        "data.verificationNote": "旧来源核实说明投影。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.attachments[].assetId": "原件/摘录/证据资产ID。",
+        "data.attachments[].sourceId": "所属来源ID。",
+        "data.attachments[].role": "ORIGINAL/EXCERPT/EVIDENCE附件角色。",
+        "data.examDetail.examPurpose": "考试用途。",
+        "data.examDetail.examYear": "实际考试年。",
+        "data.examDetail.academicYearStart": "学年起始年。",
+        "data.examDetail.authenticityStatus": "来源考试身份核实状态。",
+        "data.examDetail.identityFingerprint": "核实所绑定的考试身份指纹。",
+        "data.examDetail.legacyVerification": "是否是未具备新指纹的旧核实记录。",
+        "data.examDetail.verificationNote": "核实依据。",
+        "data.examDetail.evidenceAssetId": "核实证据资产。"
+      }
+    },
+    "product.archive": {
+      "group": "product",
+      "action": "WRITE",
+      "summary": "幂等归档成品原件",
+      "responsibility": "为已上传文件建立成品及独立版本链，冻结实际题单、参考来源和生成专项事实。未知题单可UNKNOWN归档；文件或题单变更需新成品版本，不改历史原字节。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:product:add') and @ss.hasPermi('knowledge:product:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "externalKey 1至160字符且无首尾空格；标题最多300字符。引用必须真实存在且资源READY，READY描述受教材/角色等完整性校验。示例ID须替换。",
+        "idempotency": "同账号、同操作类型、同externalKey且聚合内容一致复用原记录；同键改内容返回409。业务与提交回执在同一事务。",
+        "concurrency": "幂等提交回执与业务同事务；题单版本/哈希及可选专项版本在归档时核对；previousProductId所属版本链加锁，同角色才可续链。",
+        "partialSuccess": "单个聚合登记事务；文件上传是之前的独立步骤，登记失败不会自动删除已上传资产。",
+        "recovery": "提交响应未知先按本人externalKey查询；已成功则复用id，确需新版本用新键，不随机换键重试同一事实。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "请求缺少product对象",
+          "message": "缺少成品内容",
+          "retryable": false,
+          "recovery": "提供product、标题和已上传的assetId。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "同账号同成品键的聚合内容已改变",
+          "message": "同一外部标识的内容已变化；新版本请使用新的标识",
+          "retryable": false,
+          "recovery": "查原键回执；版本变化须核对文件实际题单，不自动绑定最新题。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "普通归档传入后台生成依据字段",
+          "message": "生成依据只允许由后台任务归档",
+          "retryable": false,
+          "recovery": "移除renderJobId/renderOutputKey，普通归档只提交真实文件和业务引用。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "题单版本或期望专项版本与当前值不同",
+          "message": "记录已变化，请重新读取后保存",
+          "retryable": false,
+          "recovery": "核对实际文件对应的题单及版本，不能静默改成最新版本。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "题目版本一致但指定题干指纹不同",
+          "message": "成品题目指纹已变化",
+          "retryable": false,
+          "recovery": "重新核对题干和已生成文件，必要时新建正确成品。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "按专项版本归档却未显式提交题单",
+          "message": "按专项版本归档须显式提交导出文件中的questionRefs",
+          "retryable": false,
+          "recovery": "提交实际导出清单，不从最新专项重算旧文件题单。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900020",
+          "rowVersion": "0",
+          "title": "示例学生练习原件",
+          "assetId": "900002",
+          "versionNo": 1,
+          "profile": {
+            "subject": "MATH",
+            "resourceType": "WORKSHEET",
+            "catalogStatus": "DRAFT",
+            "audienceRole": "STUDENT",
+            "provenanceStatus": "UNKNOWN"
+          },
+          "questionRefs": [],
+          "referenceSources": []
+        }
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "缺少成品内容"
+      },
+      "requestExample": {
+        "externalKey": "docs:example:product:v1",
+        "product": {
+          "title": "示例学生练习原件",
+          "assetId": "900002"
+        },
+        "profile": {
+          "subject": "MATH",
+          "resourceType": "WORKSHEET",
+          "originKind": "AUTHORED",
+          "catalogStatus": "DRAFT",
+          "audienceRole": "STUDENT",
+          "provenanceStatus": "UNKNOWN"
+        },
+        "outlineScopes": [],
+        "declaredKpIds": [],
+        "regions": [],
+        "questionRefs": [],
+        "referenceSources": []
+      },
+      "parameterDescriptions": {
+        "profile": "聚合顶层资料描述；不要与source/product内部扩展重复填写。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "profile.description": "说明文字，最多10000字符。",
+        "profile.subject": "学科代码；教材范围与考点须同学科。",
+        "profile.resourceType": "资料形态代码；来源旧sourceKind由此映射。",
+        "profile.originKind": "来历AUTHORED/PUBLISHED/COLLECTED/OTHER/UNKNOWN等有效字典值。",
+        "profile.catalogStatus": "DRAFT/READY/RETIRED资料描述状态；READY只说明描述满足当前规则。",
+        "profile.authorName": "作者姓名，最多200字符；未知省略。",
+        "profile.publisherName": "出版者，最多200字符；未知省略。",
+        "profile.publishedYear": "实际出版年份，1至9999；不从文件修改时间猜测。",
+        "profile.preparedYear": "实际编制年份，1至9999。",
+        "profile.acquiredAt": "来源取得时间，ISO本地日期时间；仅来源使用。",
+        "profile.audienceRole": "成品使用角色STUDENT/INLINE_ANSWER/ANSWER_ONLY/TEACHER/COMBINED，来源不使用。",
+        "profile.provenanceStatus": "成品题单UNKNOWN/DECLARED/TRACEABLE；后两者要求真实题单。",
+        "outlineScopes": "资料级教材适用范围，不能冒充逐题出处。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "outlineScopes[].outlineId": "真实同学科TEXTBOOK大纲ID。",
+        "outlineScopes[].scopeKind": "CATALOG_ONLY只确认册别、WHOLE_BOOK全册、CHAPTERS明确章节。",
+        "outlineScopes[].nodeIds": "CHAPTERS时非空，节点须属同一outlineId；其余两种范围为空数组。",
+        "outlineScopes[].note": "范围核对说明。",
+        "declaredKpIds": "资料级声明考点ID数组；不替代实际抽取题目所关联的考点。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "regions": "资料地区关系；未知用空数组，不自造地区码。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "regions[].role": "来源ORIGIN/APPLICABLE/EXAM_SCOPE；成品仅APPLICABLE。",
+        "regions[].regionCode": "实际八位字符串编码，保留前导零；CN输入兼容为全国。",
+        "externalKey": "必填稳定外部标识，1至160字符、无首尾空格；相同请求重试保持不变。",
+        "product": "必填成品基础对象；不得指定已有id、renderJobId或renderOutputKey。",
+        "product.title": "必填成品标题，最多300字符。",
+        "product.assetId": "成品原字节READY资产ID，可复用原件资产；必须与实际归档文件对应。",
+        "product.previousProductId": "确属同角色后续版本时填上一成品ID；学生与答案分别建链。",
+        "product.materialId": "可选生成时专项ID；需要冻结其版本时同时提供expectedMaterialRowVersion。",
+        "expectedMaterialRowVersion": "与product.materialId搭配的期望专项版本，传入后必须显式提供导出文件的questionRefs。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "questionRefs": "实际文件完整有序题单；UNKNOWN可空，DECLARED/TRACEABLE不可虚构。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "questionRefs[].seq": "从1连续排列的题序。",
+        "questionRefs[].questionId": "实际题目ID。",
+        "questionRefs[].questionRowVersion": "文件生成时对应题目版本，提交时原子校验。",
+        "questionRefs[].stemHash": "可选加强核对的题干哈希，省略由服务端读取当前值。",
+        "questionRefs[].itemLocator": "文件内题位说明，最多500字符。",
+        "referenceSources": "此成品实际参考的来源。 顶层该字段省略或显式null均不覆盖内层对象已有值；非null值按当前登记规则处理。",
+        "referenceSources[].sourceId": "来源ID。",
+        "referenceSources[].note": "实际参考/出处说明，最多2000字符。",
+        "product.id": "新建/新版本入口不得指定已有成品ID。",
+        "product.renderJobId": "后台生成回执字段，普通归档不得提交。",
+        "product.renderOutputKey": "后台生成回执字段，普通归档不得提交。",
+        "product.snapshotJson": "由服务端创建冻结快照，客户端不自行填写。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.profile": "资料描述对象，见其字段。",
+        "data.outlineScopes": "实际资料级教材范围集合。",
+        "data.declaredKpIds": "资料级声明的考点ID集合。",
+        "data.actualKpIds": "从实际关联题目计算的当前考点ID集合，不等同declaredKpIds。",
+        "data.regions": "地区角色及地区元信息集合。",
+        "data.readinessReasons": "资料尚不满足READY描述要求的原因数组。",
+        "data.matchReasons": "当前列表筛选命中原因；详情没有列表上下文时可能为空。",
+        "data.title": "成品标题。",
+        "data.assetId": "实际成品文件资产ID，取回文件使用asset.download。",
+        "data.materialId": "生成时关联专项ID，不能当当前题单快照的替代。",
+        "data.previousProductId": "同角色上一版成品ID。",
+        "data.rootProductId": "该版本链根成品ID。",
+        "data.versionNo": "当前链内版本序号，数字。",
+        "data.matchedProductId": "当前查询命中的实际成品版本ID。",
+        "data.snapshotJson": "创建时冻结的资料/题单/参考来源快照字符串，不是完整历史正文库。",
+        "data.renderJobId": "后台生成任务ID（若为生成产物）。",
+        "data.renderOutputKey": "后台冻结输出角色键（若有）。",
+        "data.questionRefs": "文件实际对应的冻结有序题单。",
+        "data.referenceSources": "创建时冻结的参考来源集合。",
+        "data.profile.description": "资料描述，不替代题目正文。",
+        "data.profile.subject": "资料学科。",
+        "data.profile.resourceType": "资料形态。",
+        "data.profile.originKind": "资料来历类型。",
+        "data.profile.catalogStatus": "资料描述状态；READY不等于题目批准或抽取完成。",
+        "data.profile.audienceRole": "成品使用角色，学生/原位答案/独立答案等。",
+        "data.profile.provenanceStatus": "题单溯源程度UNKNOWN/DECLARED/TRACEABLE，不是自动解析完整性证明。",
+        "data.profile.publishedYear": "实际出版年，未知可空。",
+        "data.profile.preparedYear": "实际编制年，未知可空。",
+        "data.profile.acquiredAt": "来源取得时间，成品通常不使用。",
+        "data.profile.authorName": "作者名称。",
+        "data.profile.publisherName": "出版者名称。",
+        "data.profile.legacy": "是否为兼容旧记录生成的资料描述。",
+        "data.outlineScopes[].outlineId": "实际教材大纲ID字符串。",
+        "data.outlineScopes[].scopeKind": "CATALOG_ONLY/WHOLE_BOOK/CHAPTERS范围语义。",
+        "data.outlineScopes[].nodeIds": "该教材下的实际章节ID数组。",
+        "data.outlineScopes[].note": "范围核对说明。",
+        "data.outlineScopes[].outlineTitle": "教材大纲名称。",
+        "data.outlineScopes[].subject": "该教材学科。",
+        "data.outlineScopes[].textbookVersion": "教材版本。",
+        "data.outlineScopes[].grade": "教材年级。",
+        "data.outlineScopes[].term": "教材学期。",
+        "data.outlineScopes[].outlineStatus": "教材大纲状态；草稿不自动变成已确认目录。",
+        "data.regions[].role": "地区关系角色，来源与适用/考试覆盖分开。",
+        "data.regions[].regionCode": "地区编码字符串，保留前导零。",
+        "data.regions[].name": "地区名称。",
+        "data.regions[].fullName": "完整层级名称，用于区分同名地区。",
+        "data.questionRefs[].seq": "从1连续的实际文件题序。",
+        "data.questionRefs[].questionId": "冻结引用题目ID。",
+        "data.questionRefs[].questionRowVersion": "该文件对应题目版本。",
+        "data.questionRefs[].stemHash": "该版本题干指纹。",
+        "data.questionRefs[].itemLocator": "文件内题位。",
+        "data.questionRefs[].questionTitle": "读取时题目标题投影，不能还原历史正文。",
+        "data.referenceSources[].sourceId": "参考来源ID。",
+        "data.referenceSources[].note": "引用说明。",
+        "data.referenceSources[].sourceTitle": "来源标题投影。"
+      }
+    },
+    "question.getImportIdentity": {
+      "group": "question",
+      "action": "READ",
+      "summary": "读取目标库身份",
+      "responsibility": "取得当前实例instanceId及现有HTML导入协议标识。JSON录入schemaVersion另固定为kb-question-records/v1，不能把此响应的HTML标识直接填入JSON请求。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/QUESTION-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:import:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "无业务参数；instanceId必须取当前目标库真实值，示例不可直接用于update/derive。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "schemaVersion": "kb-question-html/v1",
+          "instanceId": "example-instance-id"
+        }
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {},
+      "parameterDescriptions": {
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.schemaVersion": "当前HTML协议标识kb-question-html/v1，不是JSON提交schemaVersion。",
+        "data.instanceId": "当前目标库身份，update/derive的origin必须匹配。"
+      }
+    },
+    "question.importRecords": {
+      "group": "question",
+      "action": "WRITE",
+      "summary": "统一JSON录入或按版本回传",
+      "responsibility": "接收完整题目/知识内容及稳定资产引用，复用现行导入的逐题事务、身份和回执。新建与派生结果为草稿；当前能力不等于PRD-010独立审批、统一正常用途或父版本门禁。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/QUESTION-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:import:execute')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "records 1至200条；clientKey 1至160字符且唯一；转换后的HTML正文最多2MiB；items当前2至200项，选项2至26项；JSON字段严格按协议。",
+        "idempotency": "按当前账号及批次idempotencyKey认领，同键相同完整输入复用批次；同键改输入当前会业务500。修改已提交输入需新批次键，已有成功题目保留原ID。",
+        "concurrency": "租约控制单一执行者，逐题事务与当前版本校验；租约丢失旧执行者不得继续写。现行derive不提供PRD-010期望父版本保护，不能假称已经实现。",
+        "partialSuccess": "外层code200仍须检查status/successCount/failureCount/items；SUCCESS全批成功，PARTIAL/FAILED保留已成功项。无法解析或批次身份结构错误整体拒绝，可定位单项错误形成FAILED回执。",
+        "recovery": "响应未知以原账号原完整请求同键重发或查询已知batchId；inputReady后中断用resume。终态失败项修正后新批次提交，不删除已成功项。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "协议版本错误、批次数量非法或JSON结构无效",
+          "message": "schemaVersion必须为kb-question-records/v1",
+          "retryable": false,
+          "recovery": "按QUESTION-INTAKE及DTO修正；可定位单题错误还需检查items。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "原批次键已绑定不同输入",
+          "message": "幂等键已用于其他导入内容",
+          "retryable": false,
+          "recovery": "恢复原输入做网络重试；确实修订内容时用新批次键并保留已成功ID。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "批次执行权变化或租约失效",
+          "message": "批次执行权已变化，停止旧执行者",
+          "retryable": true,
+          "recovery": "查询原批次，等待持有者结束或按resume恢复。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "批次幂等键为空白或超过128字符",
+          "message": "幂等键长度必须为1至128字符",
+          "retryable": false,
+          "recovery": "新提交使用有效稳定键；恢复不能随意换键。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "batchId": "900030",
+          "idempotencyKey": "docs:example:records:v1",
+          "status": "SUCCESS",
+          "totalCount": 1,
+          "successCount": 1,
+          "failureCount": 0,
+          "inputReady": true,
+          "items": [
+            {
+              "itemId": "900031",
+              "batchId": "900030",
+              "itemOrder": 0,
+              "clientKey": "docs:example:q1",
+              "intent": "create",
+              "status": "SUCCESS",
+              "questionId": "900040",
+              "message": "导入成功"
+            }
+          ]
+        }
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "schemaVersion必须为kb-question-records/v1"
+      },
+      "requestExample": {
+        "schemaVersion": "kb-question-records/v1",
+        "idempotencyKey": "docs:example:records:v1",
+        "records": [
+          {
+            "clientKey": "docs:example:q1",
+            "intent": "create",
+            "metadata": {
+              "title": "示例填空题",
+              "contentKind": "EXERCISE",
+              "subject": "MATH",
+              "questionType": "FILL"
+            },
+            "stem": "2是（　）数。",
+            "answer": "偶",
+            "analysis": "2能被2整除，因此是偶数。"
+          }
+        ],
+        "resources": []
+      },
+      "parameterDescriptions": {
+        "schemaVersion": "必填，固定kb-question-records/v1；与import/schema响应HTML版本不同。",
+        "idempotencyKey": "必填批次稳定键，1至128字符；同一内容网络重试保持同键。",
+        "sourceId": "可选实际来源ID，用于建立待核实出处；不能直接使题目成为真题。",
+        "origin": "update/derive必填当前目标库instanceId，先读取question.getImportIdentity。",
+        "records": "必填1至200条完整内容，单条记录对应一个完整题目/知识内容单位。",
+        "resources": "资源别名与已上传READY题图assetId的映射，不传本地路径或临时URL。",
+        "resources[].key": "唯一安全相对路径，1至160位字母数字点下划线斜线短横线；不以/开头、不含..路径段。",
+        "resources[].assetId": "真实已上传题图资产ID；JSON使用字符串防精度丢失。",
+        "records[].clientKey": "必填稳定内容键，1至160字符且批次内唯一；已有create键不能当更新用。",
+        "records[].intent": "create默认新建；update更新既有题；derive建立独立派生记录。",
+        "records[].questionId": "update时目标题目ID。",
+        "records[].rowVersion": "update必填当前题目版本；不能省略绕过冲突。",
+        "records[].parentId": "derive必填实际主母题ID；现行入口尚无PRD-010拟议期望父版本字段。",
+        "records[].metadata": "只填写声明的分类、考点、血缘和排版元数据；不能填写status或itemCount。",
+        "records[].stem": "完整纯文本题干，与stemHtml二选一；GROUP也需要公共题干。",
+        "records[].stemHtml": "完整受控HTML题干，与stem二选一；不得只传局部修改片段。",
+        "records[].answer": "纯文本答案，与answerHtml二选一；更新省略保留，空字符串明确清空。",
+        "records[].answerHtml": "受控HTML答案，与answer二选一。",
+        "records[].analysis": "纯文本解析，与analysisHtml二选一。",
+        "records[].analysisHtml": "受控HTML解析，与analysis二选一。",
+        "records[].columns": "仅items可用，1/2/3/4列，默认2。",
+        "records[].items": "当前通用GROUP录入支持2至200子项；PRD-010计算数量专项规则尚未实施。",
+        "records[].items[].key": "1至64位稳定子项键，字母数字点短横线下划线，组内唯一。",
+        "records[].items[].stem": "子项纯文本完整题干，与stemHtml互斥。",
+        "records[].items[].stemHtml": "子项HTML完整题干。",
+        "records[].items[].answer": "子项纯文本答案；任一子项填答案会整体替换该组答案块。",
+        "records[].items[].answerHtml": "子项HTML答案。",
+        "records[].items[].analysis": "子项纯文本解析；同组整体替换语义与答案一致。",
+        "records[].items[].analysisHtml": "子项HTML解析。",
+        "records[].options": "独立选择题2至26选项，不与items或已嵌入题干的选项重复。",
+        "records[].options[].key": "组内唯一A至Z。",
+        "records[].options[].text": "选项纯文本，与html二选一。",
+        "records[].options[].html": "选项受控HTML，与text二选一。",
+        "records[].metadata.title": "内容标题。",
+        "records[].metadata.subject": "MATH/SCIENCE等有效学科值。",
+        "records[].metadata.questionType": "与contentKind匹配的粗题型字典值，不自造细题型。",
+        "records[].metadata.difficulty": "有效难度字典值。",
+        "records[].metadata.kpIds": "真实同学科考点ID数组。",
+        "records[].metadata.sourceNote": "来源说明，不替代实际出处关系。",
+        "records[].metadata.auxiliaryParentIds": "derive的辅助母题ID，不能重复主母题。",
+        "records[].metadata.operation": "derive变化类型NUMBER/CONDITION/QUESTION/OTHER。",
+        "records[].metadata.changeNote": "derive具体改变内容。",
+        "records[].metadata.preservedNote": "derive保留条件/能力说明。",
+        "records[].metadata.contentKind": "EXERCISE练习或KNOWLEDGE知识内容。",
+        "records[].metadata.layoutMode": "PLAIN/STRUCTURED，与题型、是否有图独立。",
+        "records[].metadata.unitKind": "SINGLE/GROUP；items自动规范为GROUP。",
+        "records[].metadata.paginationMode": "FLOW/KEEP_TOGETHER/ALLOW_SPLIT，表示排版约束。",
+        "records[].metadata.layoutNote": "排版说明，最多2000字符，不是任意CSS。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.batchId": "导入批次ID字符串。",
+        "data.idempotencyKey": "原批次稳定键。",
+        "data.requestFingerprint": "原完整输入指纹，用于识别同键不同内容。",
+        "data.status": "RECEIVING接收输入、PROCESSING处理，或SUCCESS/PARTIAL/FAILED终态；中断仍保留过程态并记录lastError，不存在独立INTERRUPTED状态。",
+        "data.totalCount": "本批完整内容记录数，数字。",
+        "data.successCount": "已成功记录数，数字。",
+        "data.failureCount": "失败记录数，数字。",
+        "data.sourceId": "本批关联来源ID（若有）。",
+        "data.inputAssetId": "持久原始导入正文资产ID。",
+        "data.inputReady": "原输入是否已完整持久接收；false时不能直接resume。",
+        "data.items": "逐条内容结果；外层code200仍必须检查此集合。",
+        "data.resources": "已持久接收的导入资源清单。",
+        "data.leaseUntil": "当前执行租约期限（若有），供状态判断，不是调用者锁。",
+        "data.lastError": "最近中断错误（若有）。",
+        "data.testRunId": "原隔离测试命名空间，恢复必须保持一致。",
+        "data.createBy": "批次拥有账号，批次读取/恢复限制当前账号。",
+        "data.createTime": "批次创建时间。",
+        "data.items[].itemId": "逐条回执ID。",
+        "data.items[].batchId": "所属批次ID。",
+        "data.items[].itemOrder": "批次内从0开始的回执位置索引；与成品题单从1开始的seq不同。",
+        "data.items[].clientKey": "本条稳定外部键。",
+        "data.items[].intent": "原create/update/derive意图。",
+        "data.items[].status": "本条SUCCESS/FAILED等实际结果。",
+        "data.items[].questionId": "成功对应题目ID（失败可能为空）。",
+        "data.items[].message": "本条成功/失败说明；失败时保留兄弟成功项。"
+      }
+    },
+    "question.getImportResult": {
+      "group": "question",
+      "action": "READ",
+      "summary": "读取本人导入批次结果",
+      "responsibility": "返回当前账号有权读取的批次和逐项回执、输入接收状态及资源信息；外层成功不代表每条内容成功。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/QUESTION-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:import:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "外层code200仍须检查status/successCount/failureCount/items；SUCCESS全批成功，PARTIAL/FAILED保留已成功项。无法解析或批次身份结构错误整体拒绝，可定位单项错误形成FAILED回执。",
+        "recovery": "按status/items确定完成范围；inputReady=false重发原输入，非终态且输入完整时按resume恢复，终态失败项另修订。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "批次不存在或属于其他账号",
+          "message": "导入批次不存在或无权读取",
+          "retryable": false,
+          "recovery": "核对原账号与batchId；当前此情形返回业务500。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "batchId": "900030",
+          "idempotencyKey": "docs:example:records:v1",
+          "status": "SUCCESS",
+          "totalCount": 1,
+          "successCount": 1,
+          "failureCount": 0,
+          "inputReady": true,
+          "items": [
+            {
+              "itemId": "900031",
+              "batchId": "900030",
+              "itemOrder": 0,
+              "clientKey": "docs:example:q1",
+              "intent": "create",
+              "status": "SUCCESS",
+              "questionId": "900040",
+              "message": "导入成功"
+            }
+          ]
+        }
+      },
+      "failureExample": {
+        "code": 500,
+        "msg": "导入批次不存在或无权读取"
+      },
+      "requestExample": {
+        "batchId": "900030"
+      },
+      "parameterDescriptions": {
+        "batchId": "路径批次ID，使用录入或恢复响应的字符串batchId。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.batchId": "导入批次ID字符串。",
+        "data.idempotencyKey": "原批次稳定键。",
+        "data.requestFingerprint": "原完整输入指纹，用于识别同键不同内容。",
+        "data.status": "RECEIVING接收输入、PROCESSING处理，或SUCCESS/PARTIAL/FAILED终态；中断仍保留过程态并记录lastError，不存在独立INTERRUPTED状态。",
+        "data.totalCount": "本批完整内容记录数，数字。",
+        "data.successCount": "已成功记录数，数字。",
+        "data.failureCount": "失败记录数，数字。",
+        "data.sourceId": "本批关联来源ID（若有）。",
+        "data.inputAssetId": "持久原始导入正文资产ID。",
+        "data.inputReady": "原输入是否已完整持久接收；false时不能直接resume。",
+        "data.items": "逐条内容结果；外层code200仍必须检查此集合。",
+        "data.resources": "已持久接收的导入资源清单。",
+        "data.leaseUntil": "当前执行租约期限（若有），供状态判断，不是调用者锁。",
+        "data.lastError": "最近中断错误（若有）。",
+        "data.testRunId": "原隔离测试命名空间，恢复必须保持一致。",
+        "data.createBy": "批次拥有账号，批次读取/恢复限制当前账号。",
+        "data.createTime": "批次创建时间。",
+        "data.items[].itemId": "逐条回执ID。",
+        "data.items[].batchId": "所属批次ID。",
+        "data.items[].itemOrder": "批次内从0开始的回执位置索引；与成品题单从1开始的seq不同。",
+        "data.items[].clientKey": "本条稳定外部键。",
+        "data.items[].intent": "原create/update/derive意图。",
+        "data.items[].status": "本条SUCCESS/FAILED等实际结果。",
+        "data.items[].questionId": "成功对应题目ID（失败可能为空）。",
+        "data.items[].message": "本条成功/失败说明；失败时保留兄弟成功项。"
+      }
+    },
+    "question.resumeImport": {
+      "group": "question",
+      "action": "RECOVERY",
+      "summary": "恢复输入已接收的导入批次",
+      "responsibility": "从持久输入继续原批次，只恢复既有输入和身份。SUCCESS/PARTIAL/FAILED终态直接返回；修订失败内容应另开批次而非修改原批次。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/AGENT-HTTP.md",
+        "docs/QUESTION-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:import:execute')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "仅原批次inputReady=true可恢复；持久HTML最多2MiB，资源清单最多100项/100MiB且哈希一致。",
+        "idempotency": "沿用原batchId和原输入，不创建新批次；已完成项保留，终态返回已有结果。",
+        "concurrency": "数据库租约防并发执行；活跃租约不可抢占，执行权丢失停止旧写入。",
+        "partialSuccess": "外层code200仍须检查status/successCount/failureCount/items；SUCCESS全批成功，PARTIAL/FAILED保留已成功项。无法解析或批次身份结构错误整体拒绝，可定位单项错误形成FAILED回执。",
+        "recovery": "先GET批次；未接收完整输入用原键原请求重新提交。409表示租约/输入状态/指纹条件不满足，核对后恢复，不循环抢占。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "批次不存在或不是当前账号",
+          "message": "导入批次不存在或无权读取",
+          "retryable": false,
+          "recovery": "使用原账号与真实batchId。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "原始输入尚未完整接收",
+          "message": "原始文件尚未全部接收，请用相同幂等键和原文件重新提交以继续接收",
+          "retryable": false,
+          "recovery": "使用原idempotencyKey及原完整输入重发。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "批次仍有有效执行者",
+          "message": "批次仍在执行或已完成，不能抢占；请先查询批次状态",
+          "retryable": true,
+          "recovery": "先查询，活动执行完成或租约过期后再判断是否需要恢复。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "持久输入与提交指纹不一致",
+          "message": "持久输入与原请求指纹不一致，拒绝恢复",
+          "retryable": false,
+          "recovery": "保留原回执并核对输入资产，不能覆盖持久原件绕过。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "batchId": "900030",
+          "idempotencyKey": "docs:example:records:v1",
+          "status": "SUCCESS",
+          "totalCount": 1,
+          "successCount": 1,
+          "failureCount": 0,
+          "inputReady": true,
+          "items": [
+            {
+              "itemId": "900031",
+              "batchId": "900030",
+              "itemOrder": 0,
+              "clientKey": "docs:example:q1",
+              "intent": "create",
+              "status": "SUCCESS",
+              "questionId": "900040",
+              "message": "导入成功"
+            }
+          ]
+        }
+      },
+      "failureExample": {
+        "code": 500,
+        "msg": "导入批次不存在或无权读取"
+      },
+      "requestExample": {
+        "batchId": "900030"
+      },
+      "parameterDescriptions": {
+        "batchId": "路径原批次ID；无需JSON请求体，账号须与原批次一致。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.batchId": "导入批次ID字符串。",
+        "data.idempotencyKey": "原批次稳定键。",
+        "data.requestFingerprint": "原完整输入指纹，用于识别同键不同内容。",
+        "data.status": "RECEIVING接收输入、PROCESSING处理，或SUCCESS/PARTIAL/FAILED终态；中断仍保留过程态并记录lastError，不存在独立INTERRUPTED状态。",
+        "data.totalCount": "本批完整内容记录数，数字。",
+        "data.successCount": "已成功记录数，数字。",
+        "data.failureCount": "失败记录数，数字。",
+        "data.sourceId": "本批关联来源ID（若有）。",
+        "data.inputAssetId": "持久原始导入正文资产ID。",
+        "data.inputReady": "原输入是否已完整持久接收；false时不能直接resume。",
+        "data.items": "逐条内容结果；外层code200仍必须检查此集合。",
+        "data.resources": "已持久接收的导入资源清单。",
+        "data.leaseUntil": "当前执行租约期限（若有），供状态判断，不是调用者锁。",
+        "data.lastError": "最近中断错误（若有）。",
+        "data.testRunId": "原隔离测试命名空间，恢复必须保持一致。",
+        "data.createBy": "批次拥有账号，批次读取/恢复限制当前账号。",
+        "data.createTime": "批次创建时间。",
+        "data.items[].itemId": "逐条回执ID。",
+        "data.items[].batchId": "所属批次ID。",
+        "data.items[].itemOrder": "批次内从0开始的回执位置索引；与成品题单从1开始的seq不同。",
+        "data.items[].clientKey": "本条稳定外部键。",
+        "data.items[].intent": "原create/update/derive意图。",
+        "data.items[].status": "本条SUCCESS/FAILED等实际结果。",
+        "data.items[].questionId": "成功对应题目ID（失败可能为空）。",
+        "data.items[].message": "本条成功/失败说明；失败时保留兄弟成功项。"
+      }
+    },
+    "question.list": {
+      "group": "question",
+      "action": "READ",
+      "summary": "分页检索题目与知识内容",
+      "responsibility": "按正文、考点、教材、资料出处和当前真题/错题条件查内容；真题和错题范围可独立取交集，同一题只返回一行。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:question:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "错题来源与wrongOnly=false矛盾",
+          "message": "wrongSourceId不能与wrongOnly=false组合",
+          "retryable": false,
+          "recovery": "删除矛盾条件或改为需要的错题范围。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "要求扩展考试地区但没有提供地区码",
+          "message": "examRegionDescendants需要examRegionCode",
+          "retryable": false,
+          "recovery": "先查询真实地区码再传。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 400,
+          "condition": "题干匹配模式或分类选择无效",
+          "message": "状态或分类值无效",
+          "retryable": false,
+          "recovery": "matchMode使用CONTAINS或FULLTEXT，其他值按现行契约。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 400,
+        "msg": "wrongSourceId不能与wrongOnly=false组合"
+      },
+      "requestExample": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "subject": "MATH",
+        "contentKind": "EXERCISE"
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "title": "标题关键词。",
+        "query": "题干检索文本，配matchMode。",
+        "matchMode": "CONTAINS默认包含匹配；FULLTEXT全文检索。",
+        "kpId": "真实考点ID；可结合expand扩展。",
+        "expand": "考点检索是否展开现有嵌套/组合匹配，默认true。",
+        "hasImage": "是否含图片筛选。",
+        "status": "现有内容状态筛选；不代表PRD-010正常/维护隔离已经实施。",
+        "subject": "学科有效字典值。",
+        "contentKind": "EXERCISE或KNOWLEDGE。",
+        "layoutMode": "PLAIN/STRUCTURED呈现方式。",
+        "unitKind": "SINGLE/GROUP内容单位。",
+        "paginationMode": "FLOW/KEEP_TOGETHER/ALLOW_SPLIT排版约束。",
+        "outlineId": "教材大纲ID，从考点归属关联筛选。",
+        "outlineNodeId": "实际教材节点ID。",
+        "questionType": "粗题型有效字典值。",
+        "difficulty": "难度有效字典值。",
+        "creationKind": "当前创作身份筛选，如原创或派生；不据此认定真题。",
+        "sourceId": "来源出处范围；verifiedOnly=true时与examSourceId不能矛盾。",
+        "verifiedOnly": "仅当前有效考试出处与题干核实共同成立的真题。",
+        "wrongOnly": "仅错题用途收录；false不能同时传wrongSourceId。",
+        "wrongSourceId": "错题出处来源范围，与考试出处范围独立。",
+        "examSourceId": "有效考试出处来源范围；不是任意来源。",
+        "examPurpose": "在同一有效考试出处内匹配用途。",
+        "examYear": "考试年份1至9999。",
+        "examRegionCode": "实际考试地区码，八位字符串，CN兼容全国。",
+        "examRegionDescendants": "true扩考试地区下级，须同时提供examRegionCode。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].title": "内容标题。",
+        "rows[].status": "现行题目状态；不预告PRD-010未来状态/用途隔离已实现。",
+        "rows[].contentKind": "EXERCISE练习或KNOWLEDGE知识内容。",
+        "rows[].subject": "学科。",
+        "rows[].questionType": "九类粗题型中的实际代码。",
+        "rows[].difficulty": "难度代码。",
+        "rows[].creationKind": "EXTRACTED/AUTHORED/DERIVED/UNKNOWN等当前创作身份。",
+        "rows[].sourceNote": "来源说明，不替代真实出处关系。",
+        "rows[].kpIds": "当前考点ID集合。",
+        "rows[].assetIds": "正文各区块实际引用的资产ID集合。",
+        "rows[].stemHtml": "当前完整题干HTML，含选项/题组/必要图表。",
+        "rows[].answerHtml": "当前答案HTML（可为空）。",
+        "rows[].analysisHtml": "当前解析HTML（可为空）。",
+        "rows[].stemText": "题干检索文本投影。",
+        "rows[].stemHash": "当前题干指纹；题干改变使旧核实不再匹配。",
+        "rows[].hasImage": "内容包含图片或内联图形的标记。",
+        "rows[].isRealExam": "依据当前题干和有效考试出处共同计算的真题身份。",
+        "rows[].readinessReasons": "现行可用性缺项数组，不等同未来独立审批结果。",
+        "rows[].layoutMode": "PLAIN/STRUCTURED呈现。",
+        "rows[].unitKind": "SINGLE/GROUP内容单位。",
+        "rows[].paginationMode": "FLOW/KEEP_TOGETHER/ALLOW_SPLIT排版约束。",
+        "rows[].layoutNote": "排版说明。",
+        "rows[].itemCount": "组内子项数量，只读；一组仍是一条题目记录。",
+        "rows[].matchedExamOccurrences": "匹配的有效考试出处集合；详情没有筛选上下文时返回全部有效匹配。",
+        "rows[].matchedWrongOccurrences": "匹配的错题用途出处集合，与考试出处独立。"
+      }
+    },
+    "question.get": {
+      "group": "question",
+      "action": "READ",
+      "summary": "读取当前题目及版本",
+      "responsibility": "返回完整题干、答案、解析、考点、资产、现行可用性原因及有效出处。读取最新rowVersion后才能构造更新；正文修改仍走导出/本地修改/重新导入。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md",
+        "docs/QUESTION-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:question:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900040",
+          "rowVersion": "0",
+          "title": "示例填空题",
+          "status": "DRAFT",
+          "contentKind": "EXERCISE",
+          "subject": "MATH",
+          "questionType": "FILL",
+          "stemHtml": "<p>2是（　）数。</p>",
+          "answerHtml": "<p>偶</p>",
+          "kpIds": [],
+          "assetIds": [],
+          "isRealExam": false,
+          "readinessReasons": [
+            "缺少有效考点"
+          ]
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900040"
+      },
+      "parameterDescriptions": {
+        "id": "路径题目/知识内容ID。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.title": "内容标题。",
+        "data.status": "现行题目状态；不预告PRD-010未来状态/用途隔离已实现。",
+        "data.contentKind": "EXERCISE练习或KNOWLEDGE知识内容。",
+        "data.subject": "学科。",
+        "data.questionType": "九类粗题型中的实际代码。",
+        "data.difficulty": "难度代码。",
+        "data.creationKind": "EXTRACTED/AUTHORED/DERIVED/UNKNOWN等当前创作身份。",
+        "data.sourceNote": "来源说明，不替代真实出处关系。",
+        "data.kpIds": "当前考点ID集合。",
+        "data.assetIds": "正文各区块实际引用的资产ID集合。",
+        "data.stemHtml": "当前完整题干HTML，含选项/题组/必要图表。",
+        "data.answerHtml": "当前答案HTML（可为空）。",
+        "data.analysisHtml": "当前解析HTML（可为空）。",
+        "data.stemText": "题干检索文本投影。",
+        "data.stemHash": "当前题干指纹；题干改变使旧核实不再匹配。",
+        "data.hasImage": "内容包含图片或内联图形的标记。",
+        "data.isRealExam": "依据当前题干和有效考试出处共同计算的真题身份。",
+        "data.readinessReasons": "现行可用性缺项数组，不等同未来独立审批结果。",
+        "data.layoutMode": "PLAIN/STRUCTURED呈现。",
+        "data.unitKind": "SINGLE/GROUP内容单位。",
+        "data.paginationMode": "FLOW/KEEP_TOGETHER/ALLOW_SPLIT排版约束。",
+        "data.layoutNote": "排版说明。",
+        "data.itemCount": "组内子项数量，只读；一组仍是一条题目记录。",
+        "data.matchedExamOccurrences": "匹配的有效考试出处集合；详情没有筛选上下文时返回全部有效匹配。",
+        "data.matchedWrongOccurrences": "匹配的错题用途出处集合，与考试出处独立。"
+      }
+    },
+    "question.export": {
+      "group": "question",
+      "action": "EXPORT",
+      "summary": "导出有序题单内容包",
+      "responsibility": "按显式有序题目ID或已有专项题序生成ZIP，含离线HTML、records.json、资源及机器清单。用于取出复用和按版本回传；当前不声称已具备PRD-010正式/维护用途隔离。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/QUESTION-INTAKE.md",
+        "docs/AGENT-HTTP.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:question:export')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "最终题单1至200个不重复ID；题图总字节不超过200MiB，所有引用资产有效且内容校验通过。",
+        "idempotency": "导出为只读生成，无写入幂等键；每次取得当前内容与导出包内版本。",
+        "concurrency": "导出包保留题目版本和目标实例；此读取不是持续锁定，回传时仍可能版本冲突。",
+        "partialSuccess": "ZIP在内存完整生成后输出；任何缺失资源/题目错误使本次导出失败，下载中断须重新取回。",
+        "recovery": "先确认响应Content-Type再保存ZIP；版本变化后重新核对导出，不能删掉rowVersion强行覆盖。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "同时提供或都未提供题目列表与专项",
+          "message": "请提供题目ID列表或专项ID，且只能提供一种",
+          "retryable": false,
+          "recovery": "选择一种题单来源。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "题单为空、超过200项或包含重复ID",
+          "message": "导出请选择1至200个不重复的题目",
+          "retryable": false,
+          "recovery": "去重并按实际题序分批，不能扩大限制。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 500,
+          "condition": "导出题图总量超过200MiB",
+          "message": "导出题图总量超过200MiB，请分批导出",
+          "retryable": false,
+          "recovery": "按题单分批导出。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 409,
+          "condition": "专项仅真题选题已失效",
+          "message": "仅真题选题已失效，请复核出处或调整专项",
+          "retryable": false,
+          "recovery": "先读专项并核对现行出处。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": "ZIP二进制（application/zip），包含离线HTML、records.json、manifest和所需资源；JSON业务错误不是ZIP。",
+      "failureExample": {
+        "code": 500,
+        "msg": "请提供题目ID列表或专项ID，且只能提供一种"
+      },
+      "requestExample": {
+        "questionIds": [
+          "900040"
+        ],
+        "includeAnswers": true
+      },
+      "parameterDescriptions": {
+        "questionIds": "有序、不重复的题目ID数组，与materialId二选一；1至200项。",
+        "materialId": "可选已有专项ID，与questionIds二选一；取专项有序题单并执行现有选题有效性检查。",
+        "includeAnswers": "默认true包含答案/解析；false实际省略答案与解析，导出JSON回传省略区块保留线上值。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "错误响应": "失败时为JSON code/msg，先检查Content-Type，不能另存为二进制文件。"
+      }
+    },
+    "reference.dictionary": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取业务字典选项",
+      "responsibility": "读取分类/状态的字典项供请求取值与中文展示；未知类型可能返回空数组。业务校验仍由对应接口执行，年级/学期/教材版本从outlineOptions取。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md",
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "authenticated",
+      "invocationRules": {
+        "pagination": "不适用：返回该类型有限字典项数组。",
+        "limits": "只取需要的业务字典类型；字典类型不存在时返回空data数组，不编造404。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": []
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {
+        "dictType": "kb_subject"
+      },
+      "parameterDescriptions": {
+        "dictType": "字典类型；业务常用kb_subject/kb_question_type/kb_content_kind/kb_resource_type/kb_catalog_status/kb_audience_role等。此方法现行权限为已登录，不改变其运行时可读范围。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data[].dictCode": "字典项ID。",
+        "data[].dictSort": "显示排序。",
+        "data[].dictLabel": "中文显示标签。",
+        "data[].dictValue": "请求中提交的稳定机器值。",
+        "data[].dictType": "所属字典类型。",
+        "data[].cssClass": "既有页面样式类。",
+        "data[].listClass": "既有列表展示样式。",
+        "data[].isDefault": "是否默认项。",
+        "data[].status": "字典项启停状态。",
+        "data[].remark": "字典项备注。"
+      }
+    },
+    "reference.outlineOptions": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取教材固定选项",
+      "responsibility": "返回年级、学期固定选项与可复用教材版本。教材版本可按现有规则输入复用，三者不走sys_dict。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasAnyPermi('knowledge:outline:list,knowledge:outline:query')",
+      "invocationRules": {
+        "pagination": "不适用：返回固定年级/学期及现有可复用教材版本选项。",
+        "limits": "无业务参数；写入教材版本最长40字符，显示标签与提交value区分。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "grades": [
+            {
+              "value": "G1",
+              "label": "一年级"
+            },
+            {
+              "value": "G2",
+              "label": "二年级"
+            },
+            {
+              "value": "G3",
+              "label": "三年级"
+            },
+            {
+              "value": "G4",
+              "label": "四年级"
+            },
+            {
+              "value": "G5",
+              "label": "五年级"
+            },
+            {
+              "value": "G6",
+              "label": "六年级"
+            },
+            {
+              "value": "G7",
+              "label": "七年级"
+            },
+            {
+              "value": "G8",
+              "label": "八年级"
+            },
+            {
+              "value": "G9",
+              "label": "九年级"
+            }
+          ],
+          "terms": [
+            {
+              "value": "FIRST",
+              "label": "上学期"
+            },
+            {
+              "value": "SECOND",
+              "label": "下学期"
+            }
+          ],
+          "textbookVersions": [
+            {
+              "value": "ZHEJIAO",
+              "label": "浙教版"
+            },
+            {
+              "value": "RENJIAO",
+              "label": "人教版"
+            }
+          ]
+        }
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {},
+      "parameterDescriptions": {
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.grades": "G1至G9固定年级选项。",
+        "data.terms": "FIRST/SECOND固定学期选项。",
+        "data.textbookVersions": "默认及数据库已有可复用教材版本，不是字典。",
+        "data.grades[].value": "请求中使用的值。",
+        "data.grades[].label": "页面中文显示标签。",
+        "data.terms[].value": "请求中使用的值。",
+        "data.terms[].label": "页面中文显示标签。",
+        "data.textbookVersions[].value": "请求中使用的值。",
+        "data.textbookVersions[].label": "页面中文显示标签。"
+      }
+    },
+    "reference.outlineList": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "分页查找教材大纲",
+      "responsibility": "按教材类型、学科、版本、年级与学期找到实际大纲，先核对版本和状态，再读取详情取得章节ID。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:outline:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {
+        "catalogKind": "TEXTBOOK",
+        "subject": "MATH",
+        "grade": "G7",
+        "term": "FIRST",
+        "pageNum": 1,
+        "pageSize": 20
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "title": "大纲标题关键词。",
+        "catalogKind": "目录类型，教材使用TEXTBOOK；不要把其他目录当教材。",
+        "subject": "学科MATH/SCIENCE等有效值。",
+        "textbookVersion": "教材版本代码或已有可复用输入值。",
+        "grade": "固定年级G1至G9。",
+        "term": "固定学期FIRST/SECOND。",
+        "status": "大纲状态，如DRAFT/CONFIRMED；草稿不等于已核实教材。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].title": "大纲标题。",
+        "rows[].description": "大纲说明。",
+        "rows[].catalogKind": "TEXTBOOK等目录类型。",
+        "rows[].subject": "大纲学科。",
+        "rows[].textbookVersion": "教材版本。",
+        "rows[].grade": "G1至G9教材年级。",
+        "rows[].term": "FIRST/SECOND学期。",
+        "rows[].edition": "教材修订年份/版次/ISBN说明。",
+        "rows[].catalogSource": "目录核对依据。",
+        "rows[].status": "DRAFT/CONFIRMED等实际目录状态。",
+        "rows[].nodes": "本大纲实际节点集合，仅详情返回完整节点。",
+        "rows[].nodes[].id": "章节节点ID。",
+        "rows[].nodes[].rowVersion": "节点当前并发版本。",
+        "rows[].nodes[].outlineId": "所属教材大纲ID。",
+        "rows[].nodes[].parentId": "父节点ID，根节点按实际响应为空或根标识。",
+        "rows[].nodes[].title": "章节标题。",
+        "rows[].nodes[].sortOrder": "同级排序数字。",
+        "rows[].nodes[].kpIds": "挂在本章节的考点ID集合。"
+      }
+    },
+    "reference.outlineGet": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取大纲及章节",
+      "responsibility": "返回实际大纲与本大纲节点/考点关系，供教材范围挂载和逐级选择。详情节点数组不是跨教材查询，也不会自动确认草稿目录。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:outline:query')",
+      "invocationRules": {
+        "pagination": "不适用：单本大纲详情返回所属节点集合。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900050",
+          "rowVersion": "0",
+          "title": "示例七年级数学上册",
+          "catalogKind": "TEXTBOOK",
+          "subject": "MATH",
+          "textbookVersion": "ZHEJIAO",
+          "grade": "G7",
+          "term": "FIRST",
+          "status": "DRAFT",
+          "nodes": []
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900050"
+      },
+      "parameterDescriptions": {
+        "id": "路径大纲ID；从outlineList选择并核对真实教材。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.title": "大纲标题。",
+        "data.description": "大纲说明。",
+        "data.catalogKind": "TEXTBOOK等目录类型。",
+        "data.subject": "大纲学科。",
+        "data.textbookVersion": "教材版本。",
+        "data.grade": "G1至G9教材年级。",
+        "data.term": "FIRST/SECOND学期。",
+        "data.edition": "教材修订年份/版次/ISBN说明。",
+        "data.catalogSource": "目录核对依据。",
+        "data.status": "DRAFT/CONFIRMED等实际目录状态。",
+        "data.nodes": "本大纲实际节点集合，仅详情返回完整节点。",
+        "data.nodes[].id": "章节节点ID。",
+        "data.nodes[].rowVersion": "节点当前并发版本。",
+        "data.nodes[].outlineId": "所属教材大纲ID。",
+        "data.nodes[].parentId": "父节点ID，根节点按实际响应为空或根标识。",
+        "data.nodes[].title": "章节标题。",
+        "data.nodes[].sortOrder": "同级排序数字。",
+        "data.nodes[].kpIds": "挂在本章节的考点ID集合。"
+      }
+    },
+    "reference.kpList": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "分页检索考点",
+      "responsibility": "查询同学科教材下的考点与章节归属；年级/学期来自教材，不作为考点独立分类。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:kp:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {
+        "subject": "MATH",
+        "outlineId": "900050",
+        "pageNum": 1,
+        "pageSize": 20
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "name": "考点名称关键词。",
+        "subject": "考点所属学科；考点本身无年级。",
+        "parentId": "嵌套父考点ID；嵌套与组合关系不同。",
+        "outlineId": "已归属教材大纲ID。",
+        "outlineNodeId": "教材章节节点ID，核对其所属大纲。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].name": "考点名称。",
+        "rows[].description": "考点说明。",
+        "rows[].subject": "考点学科，无独立年级。",
+        "rows[].parentId": "单父嵌套关系的父考点ID。",
+        "rows[].rootId": "嵌套树根考点ID。",
+        "rows[].rootName": "根考点名称。",
+        "rows[].depth": "当前嵌套层级。",
+        "rows[].outlineIds": "归属教材大纲ID集合。",
+        "rows[].outlineBindings": "教材及章节归属明细。",
+        "rows[].nestedIds": "直接嵌套子考点集合。",
+        "rows[].componentIds": "组合所含考点集合，与嵌套关系分开。"
+      }
+    },
+    "reference.kpGet": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取考点归属与关系",
+      "responsibility": "核对考点名称、学科、教材章节、单父嵌套与组合关系，避免只凭名称或搜索首项关联。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:kp:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "ID 使用字符串形式传递真实正整数；示例 ID 为合成值，执行前须替换。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900060",
+          "rowVersion": "0",
+          "name": "示例整除判断",
+          "subject": "MATH",
+          "outlineIds": [
+            "900050"
+          ],
+          "nestedIds": [],
+          "componentIds": []
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900060"
+      },
+      "parameterDescriptions": {
+        "id": "路径考点ID。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.name": "考点名称。",
+        "data.description": "考点说明。",
+        "data.subject": "考点学科，无独立年级。",
+        "data.parentId": "单父嵌套关系的父考点ID。",
+        "data.rootId": "嵌套树根考点ID。",
+        "data.rootName": "根考点名称。",
+        "data.depth": "当前嵌套层级。",
+        "data.outlineIds": "归属教材大纲ID集合。",
+        "data.outlineBindings": "教材及章节归属明细。",
+        "data.nestedIds": "直接嵌套子考点集合。",
+        "data.componentIds": "组合所含考点集合，与嵌套关系分开。"
+      }
+    },
+    "reference.regionList": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "按层级分页检索地区",
+      "responsibility": "按parentCode读取下级，或按keyword检索名称/完整名称/编码；两者均未提供时只查根目录。地区是层级表，不是业务字典。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:query') or @ss.hasPermi('knowledge:product:query')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {
+        "parentCode": "33000000",
+        "pageNum": 1,
+        "pageSize": 20
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "parentCode": "父级八位字符串地区码；全国00000000，CN为兼容别名。",
+        "keyword": "名称、完整名称或编码关键词；不传parentCode时可跨层级检索。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].regionCode": "八位地区编码字符串，保留前导零；全国00000000。",
+        "rows[].parentCode": "父级地区编码，根可为空。",
+        "rows[].name": "地区名称。",
+        "rows[].fullName": "完整层级名称。",
+        "rows[].level": "层级数字，全国0，省/市/区县/街道依次1/2/3/4。",
+        "rows[].status": "当前地区启停状态，按返回值读取。",
+        "rows[].standardCode": "原码表对应规范代码（若有）。",
+        "rows[].sourceUrl": "码表来源信息（若有）。",
+        "rows[].hasChildren": "是否仍有下级，用于按需展开。"
+      }
+    },
+    "reference.regionGet": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取地区名称与层级",
+      "responsibility": "按实际地区码返回name/fullName、父级、层级与hasChildren。保留编码前导零，使用fullName区分同名地区。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/CATALOG-INTAKE.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:source:query') or @ss.hasPermi('knowledge:product:query')",
+      "invocationRules": {
+        "pagination": "不适用：本操作返回单个对象或文件，不是分页列表。",
+        "limits": "编码是字符串，不转Number；未知编码返回404，不按输入猜测地区。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "regionCode": "33000000",
+          "parentCode": "00000000",
+          "name": "浙江省",
+          "fullName": "浙江省",
+          "level": 1,
+          "hasChildren": true
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "code": "33000000"
+      },
+      "parameterDescriptions": {
+        "code": "八位地区编码，保留前导零；全国根为00000000，不是响应体业务码。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.regionCode": "八位地区编码字符串，保留前导零；全国00000000。",
+        "data.parentCode": "父级地区编码，根可为空。",
+        "data.name": "地区名称。",
+        "data.fullName": "完整层级名称。",
+        "data.level": "层级数字，全国0，省/市/区县/街道依次1/2/3/4。",
+        "data.status": "当前地区启停状态，按返回值读取。",
+        "data.standardCode": "原码表对应规范代码（若有）。",
+        "data.sourceUrl": "码表来源信息（若有）。",
+        "data.hasChildren": "是否仍有下级，用于按需展开。"
+      }
+    },
+    "reference.materialList": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "分页检索专项",
+      "responsibility": "查找现有专项，供materialId导出分支选用；返回列表不保证专项的实时选题有效性，导出前读取详情。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:material:list')",
+      "invocationRules": {
+        "pagination": "query 使用 pageNum/pageSize，默认1/10，返回 rows/total；现有公共分页工具未设统一最大页长，不代表无限量读取受支持。建议按小页连续读取。 reasonable默认true会将越界页调整到末页，不能以空rows判断读完；需要严格页码/空页语义时显式传reasonable=false。",
+        "limits": "仅返回当前页；不使用超大 pageSize 拉全量。当前页长上限尚未统一实施，筛选条件按本接口规则校验。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：返回本页 rows 与匹配总数 total；空 rows 是合法查询结果，不表示所有页都为空。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "查询成功",
+        "rows": [],
+        "total": 0
+      },
+      "failureExample": {
+        "code": 401,
+        "msg": "请求访问：{请求路径}，认证失败，无法访问系统资源"
+      },
+      "requestExample": {
+        "title": "示例",
+        "pageNum": 1,
+        "pageSize": 20
+      },
+      "parameterDescriptions": {
+        "pageNum": "服务端页码，默认1；与 pageSize 一起使用。",
+        "pageSize": "每页条数，默认10；现有公共分页工具无统一最大值，应分小页连续读取。",
+        "orderByColumn": "若依排序列参数，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "isAsc": "若依排序方向 asc/desc，实际结果仍受对应 Mapper 排序逻辑约束。",
+        "reasonable": "PageHelper页码合理化开关，默认true；pageNum超出末页时回退到末页，pageNum小于1时回到首页。传false按请求页码查询，超过末页返回空rows并保留total。",
+        "title": "专项标题关键词；其他实体字段不是本公开列表支持的筛选条件。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "rows": "本页结果数组，空数组是合法结果。",
+        "total": "满足筛选条件的总条数；不是本页长度。",
+        "rows[].id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "rows[].rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "rows[].createBy": "创建账号标识。",
+        "rows[].createTime": "创建时间，按实际响应格式读取。",
+        "rows[].updateBy": "最近修改账号标识。",
+        "rows[].updateTime": "最近修改时间，按实际响应格式读取。",
+        "rows[].remark": "记录备注（若返回）。",
+        "rows[].title": "专项名称。",
+        "rows[].description": "专项说明。",
+        "rows[].kpId": "关联考点ID（若有）。",
+        "rows[].selectionMode": "现行选题模式，例如EXAM_ONLY。",
+        "rows[].questionIds": "专项保存的有序题目ID。",
+        "rows[].referenceSources": "专项保存的参考来源范围。",
+        "rows[].questions": "按专项题序读出的当前题目详情。",
+        "rows[].selectionValid": "按现行规则实时判断选题是否仍有效，导出还会再次校验。",
+        "rows[].questionCount": "专项题目数量。"
+      }
+    },
+    "reference.materialGet": {
+      "group": "reference",
+      "action": "READ",
+      "summary": "读取专项题序与引用",
+      "responsibility": "取得专项有序题目ID、参考来源及实时selectionValid；后续导出按现行规则再次检查选题，不能将详情读取视为冻结。",
+      "prdRefs": [
+        "PRD-009"
+      ],
+      "contractRefs": [
+        "docs/knowledge-api-contract.md"
+      ],
+      "permissionRule": "@ss.hasPermi('knowledge:material:query')",
+      "invocationRules": {
+        "pagination": "不适用：返回一个已保存专项及其有序题单；专项写入上限与导出上限分别校验。",
+        "limits": "现有专项最多保存500道题，question.export一次最多200道；详情不是无限量业务列表。",
+        "idempotency": "只读操作，无业务写入幂等键；相同参数可以重复查询。",
+        "concurrency": "读取调用时的当前状态，不冻结业务记录；后续写入须读取并使用最新版本。",
+        "partialSuccess": "不适用：本操作不批量写入；成功仅表示本次读取完成。",
+        "recovery": "认证与参数正确后可重新查询；错误不应被当作空数据或下载文件。"
+      },
+      "businessErrors": [
+        {
+          "httpStatus": 200,
+          "code": 401,
+          "condition": "未提供有效登录凭据或登录已失效",
+          "message": "请求访问：{请求路径}，认证失败，无法访问系统资源",
+          "retryable": false,
+          "recovery": "重新登录取得本人 Bearer token 后重试；不要在公开示例中保存凭据。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 403,
+          "condition": "已登录但不满足本操作权限表达式",
+          "message": "没有权限，请联系管理员授权",
+          "retryable": false,
+          "recovery": "核对当前账号角色与该操作所需权限。"
+        },
+        {
+          "httpStatus": 200,
+          "code": 404,
+          "condition": "指定业务记录或所引用记录不存在",
+          "message": "记录不存在",
+          "retryable": false,
+          "recovery": "在同一目标实例查询实际 ID；不要创建重复记录绕过引用错误。"
+        }
+      ],
+      "successExample": {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+          "id": "900070",
+          "rowVersion": "0",
+          "title": "示例专项",
+          "questionIds": [
+            "900040"
+          ],
+          "questionCount": 1,
+          "selectionValid": true,
+          "referenceSources": []
+        }
+      },
+      "failureExample": {
+        "code": 404,
+        "msg": "记录不存在"
+      },
+      "requestExample": {
+        "id": "900070"
+      },
+      "parameterDescriptions": {
+        "id": "路径专项ID；从materialList查询。",
+        "code": "业务结果码；成功200，须与HTTP状态分别判断。",
+        "msg": "本次操作说明；程序分支使用稳定业务码，不解析自然语言消息。",
+        "data": "本次业务结果，字段结构由Java类型生成。",
+        "data.id": "业务记录稳定ID；按响应中的字符串保存，不转换为JavaScript Number。",
+        "data.rowVersion": "当前并发版本字符串；不是历史正文，后续修改需要读回最新值。",
+        "data.createBy": "创建账号标识。",
+        "data.createTime": "创建时间，按实际响应格式读取。",
+        "data.updateBy": "最近修改账号标识。",
+        "data.updateTime": "最近修改时间，按实际响应格式读取。",
+        "data.remark": "记录备注（若返回）。",
+        "data.title": "专项名称。",
+        "data.description": "专项说明。",
+        "data.kpId": "关联考点ID（若有）。",
+        "data.selectionMode": "现行选题模式，例如EXAM_ONLY。",
+        "data.questionIds": "专项保存的有序题目ID。",
+        "data.referenceSources": "专项保存的参考来源范围。",
+        "data.questions": "按专项题序读出的当前题目详情。",
+        "data.selectionValid": "按现行规则实时判断选题是否仍有效，导出还会再次校验。",
+        "data.questionCount": "专项题目数量。"
+      }
+    }
+  }
+}

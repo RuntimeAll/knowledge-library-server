@@ -31,6 +31,7 @@ public class KbSourceController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:source:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.list", response = com.ruoyi.knowledge.domain.KbSource.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title", "subject", "resourceType", "catalogStatus", "sourceKind", "extractionStatus", "authenticityStatus", "chapterMatch", "textbookVersion", "grade", "term", "yearField", "regionRole", "regionCode", "coverageMode", "examPurpose", "organizerLevel", "paperNature", "audienceRole", "provenanceStatus", "historyMode", "outlineId", "outlineNodeId", "kpId", "rootProductId", "materialId", "yearFrom", "yearTo", "examYear", "academicYearStart", "regionDescendants", "includeNationwide"})
     public TableDataInfo list(
             com.ruoyi.knowledge.catalog.KbCatalogQuery query,
             jakarta.servlet.http.HttpServletRequest request) {
@@ -42,6 +43,7 @@ public class KbSourceController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:source:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.get", response = com.ruoyi.knowledge.domain.KbSource.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }

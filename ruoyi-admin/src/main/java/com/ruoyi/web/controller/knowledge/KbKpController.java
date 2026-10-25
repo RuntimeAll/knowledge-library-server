@@ -33,6 +33,7 @@ public class KbKpController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:kp:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpList", response = com.ruoyi.knowledge.domain.KbKp.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"name", "subject", "parentId", "outlineId", "outlineNodeId"})
     public TableDataInfo list(KbKp query) {
         startPage();
         return getDataTable(service.list(query));
@@ -46,6 +47,7 @@ public class KbKpController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:kp:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpGet", response = com.ruoyi.knowledge.domain.KbKp.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }

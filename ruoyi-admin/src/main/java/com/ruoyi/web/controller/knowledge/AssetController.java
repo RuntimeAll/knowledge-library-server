@@ -38,6 +38,7 @@ public class AssetController extends BaseController {
     @PostMapping("/upload")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:upload')")
     @Log(title = "知识库文件上传", businessType = BusinessType.INSERT)
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.upload", response = com.ruoyi.knowledge.storage.domain.KbAsset.class)
     public AjaxResult upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("purpose") String purpose,
@@ -48,12 +49,14 @@ public class AssetController extends BaseController {
 
     @GetMapping("/by-key")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.findSubmission", response = com.ruoyi.knowledge.storage.domain.KbAsset.class)
     public AjaxResult ownUpload(@RequestParam String externalKey) {
         return success(assets.findOwnUpload(externalKey));
     }
 
     @GetMapping("/{assetId}")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.get", response = com.ruoyi.knowledge.storage.domain.KbAsset.class)
     public AjaxResult metadata(@PathVariable Long assetId) {
         return success(assets.getAsset(assetId));
     }
@@ -67,6 +70,7 @@ public class AssetController extends BaseController {
 
     @GetMapping("/{assetId}/content")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:download')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.download", response = byte[].class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.BINARY, mediaType = "application/octet-stream")
     public void download(@PathVariable Long assetId, HttpServletResponse response)
             throws Exception {
         renders.assertAssetDownload(assetId);

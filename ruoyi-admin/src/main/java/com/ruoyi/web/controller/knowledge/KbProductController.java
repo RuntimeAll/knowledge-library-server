@@ -30,6 +30,7 @@ public class KbProductController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:product:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.list", response = com.ruoyi.knowledge.domain.KbProduct.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title", "subject", "resourceType", "catalogStatus", "sourceKind", "extractionStatus", "authenticityStatus", "chapterMatch", "textbookVersion", "grade", "term", "yearField", "regionRole", "regionCode", "coverageMode", "examPurpose", "organizerLevel", "paperNature", "audienceRole", "provenanceStatus", "historyMode", "outlineId", "outlineNodeId", "kpId", "rootProductId", "materialId", "yearFrom", "yearTo", "examYear", "academicYearStart", "regionDescendants", "includeNationwide"})
     public TableDataInfo list(
             com.ruoyi.knowledge.catalog.KbCatalogQuery query,
             jakarta.servlet.http.HttpServletRequest request) {
@@ -41,6 +42,7 @@ public class KbProductController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:product:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.get", response = com.ruoyi.knowledge.domain.KbProduct.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }

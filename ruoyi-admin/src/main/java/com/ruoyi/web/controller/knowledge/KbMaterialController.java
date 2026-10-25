@@ -35,6 +35,7 @@ public class KbMaterialController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:material:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialList", response = com.ruoyi.knowledge.domain.KbMaterial.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title"})
     public TableDataInfo list(KbMaterial query) {
         startPage();
         return getDataTable(service.list(query));
@@ -42,6 +43,7 @@ public class KbMaterialController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:material:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialGet", response = com.ruoyi.knowledge.domain.KbMaterial.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }

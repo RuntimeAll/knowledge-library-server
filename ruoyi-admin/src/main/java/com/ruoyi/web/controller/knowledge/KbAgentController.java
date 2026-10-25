@@ -23,12 +23,14 @@ public class KbAgentController extends BaseController {
 
     @GetMapping("/source/by-key")
     @PreAuthorize("@ss.hasPermi('knowledge:source:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.findSubmission", response = com.ruoyi.knowledge.domain.KbSource.class)
     public AjaxResult sourceByKey(@RequestParam String externalKey) {
         return success(service.findSource(externalKey, getUsername()));
     }
 
     @GetMapping("/product/by-key")
     @PreAuthorize("@ss.hasPermi('knowledge:product:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.findSubmission", response = com.ruoyi.knowledge.domain.KbProduct.class)
     public AjaxResult productByKey(@RequestParam String externalKey) {
         return success(service.findProduct(externalKey, getUsername()));
     }
@@ -36,6 +38,7 @@ public class KbAgentController extends BaseController {
     @PostMapping("/source")
     @PreAuthorize("@ss.hasPermi('knowledge:source:add') and @ss.hasPermi('knowledge:source:query')")
     @Log(title = "Agent来源登记", businessType = BusinessType.INSERT)
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.register", response = com.ruoyi.knowledge.domain.KbSource.class)
     public AjaxResult source(@RequestBody KbAgentSourceRequest request) {
         return success(service.saveSource(request, getUsername()));
     }
@@ -44,6 +47,7 @@ public class KbAgentController extends BaseController {
     @PreAuthorize(
             "@ss.hasPermi('knowledge:product:add') and @ss.hasPermi('knowledge:product:query')")
     @Log(title = "Agent成品归档", businessType = BusinessType.INSERT)
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.archive", response = com.ruoyi.knowledge.domain.KbProduct.class)
     public AjaxResult product(@RequestBody KbAgentProductRequest request) {
         return success(service.saveProduct(request, getUsername()));
     }

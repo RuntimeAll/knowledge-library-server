@@ -73,6 +73,7 @@ public class SysDictDataController extends BaseController
      * 根据字典类型查询字典数据信息
      */
     @GetMapping(value = "/type/{dictType}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.dictionary", response = com.ruoyi.common.core.domain.entity.SysDictData.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.ARRAY)
     public AjaxResult dictType(@PathVariable String dictType)
     {
         List<SysDictData> data = dictTypeService.selectDictDataByType(dictType);

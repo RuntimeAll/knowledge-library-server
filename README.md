@@ -9,6 +9,18 @@
 - 本机使用共享 MySQL3307 的 `knowledge_ruoyi` 和 Redis6379/DB15。真实配置只保存在工作区忽略提交的 `config/application-local.yml`，不提交账号密钥。
 - `sql/` 保存初始化及追加迁移；已有业务库不可直接重跑初始化或清空。远程代码初始化不代表已部署或通过用户业务终审。
 
+核心 API 从 [显式标记](ruoyi-admin/src/main/java/com/ruoyi/web/core/docs/CoreApi.java)、Java 类型与 [语义元数据](ruoyi-admin/src/main/resources/api/core-contracts.json) 生成 OpenAPI 3.1。公开入口为 `/swagger-ui/index.html`、`/v3/api-docs/core`；业务调用仍执行原有登录与权限。`published=false` 可维护内部接口契约而不公开。维护流程与正式契约索引见工作区 [API 维护说明](../docs/API-MAINTENANCE.md)。
+
+验证时固定 Java 17，并启用独立输出目录，避免 IDE 与 Maven 共用 `target/classes`：
+
+```sh
+mvn -Papi-contract-verification -pl ruoyi-admin -am -Dtest=CoreApiExportTest,KnowledgeArchitectureTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -Papi-contract-verification -pl ruoyi-admin -am package
+python3 ../tools/check_backend_quality.py --baseline 5059da5babf9f2130ba61741cb42e0f48219654f
+```
+
+隔离构建产物在 `../.runtime/work/prd-009/backend-build/<artifactId>/`。导出测试只加载 Controller、鉴权和文档配置，Service 为 mock，不读取本地密钥、不连接数据库/Redis/OSS；输出核心规范与注册映射，不能替代真实业务闭环验收。Checkstyle 固定 10.21.4；历史违规按显式基线提交和源码行指纹计数，仅新增错误阻断。方法超过 80 行、变更 Service 超过 500 非空行属于职责评审信号，不能用行数代替设计判断。Maven `checkstyle:checkstyle` 只产报告，增量门禁以该 Python 工具结果为准。已有基线不能静默刷新。
+
 以下保留原若依框架说明及来源。
 
 <p align="center">

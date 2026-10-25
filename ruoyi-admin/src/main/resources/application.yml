@@ -15,6 +15,8 @@ ruoyi:
 
 # 开发环境配置
 server:
+  # Reverse proxy must replace forwarded headers; spec servers remain relative and same-origin.
+  forward-headers-strategy: framework
   # 服务器的HTTP端口，默认为8080
   port: 8080
   servlet:
@@ -116,19 +118,25 @@ pagehelper:
   supportMethodsArguments: true
   params: count=countSql
 
-# Springdoc配置
+# Only explicitly marked core handlers are published.
 springdoc:
+  enable-default-api-docs: false
+  use-fqn: true
   api-docs:
     path: /v3/api-docs
+    version: OPENAPI_3_1
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+    disable-swagger-default-url: true
+    persist-authorization: false
+    deep-linking: true
+    query-config-enabled: false
+    validator-url: ""
+    try-it-out-enabled: false
+    display-request-duration: true
     tags-sorter: alpha
-  group-configs:
-    - group: 'default'
-      display-name: '测试模块'
-      paths-to-match: '/**'
-      packages-to-scan: com.ruoyi.web.controller.tool
+    operations-sorter: alpha
 
 # 防盗链配置
 referer:

@@ -25,6 +25,7 @@ public class KbCatalogController extends BaseController {
     @GetMapping("/region/list")
     @PreAuthorize(
             "@ss.hasPermi('knowledge:source:query') or @ss.hasPermi('knowledge:product:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.regionList", response = com.ruoyi.knowledge.catalog.KbRegion.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE)
     public TableDataInfo regions(
             @RequestParam(required = false) String parentCode,
             @RequestParam(required = false) String keyword) {
@@ -35,6 +36,7 @@ public class KbCatalogController extends BaseController {
     @GetMapping("/region/{code}")
     @PreAuthorize(
             "@ss.hasPermi('knowledge:source:query') or @ss.hasPermi('knowledge:product:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.regionGet", response = com.ruoyi.knowledge.catalog.KbRegion.class)
     public AjaxResult region(@PathVariable String code) {
         return success(catalog.region(code));
     }

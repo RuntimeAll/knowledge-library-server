@@ -31,12 +31,14 @@ public class KbOutlineController extends BaseController {
 
     @PreAuthorize("@ss.hasAnyPermi('knowledge:outline:list,knowledge:outline:query')")
     @GetMapping("/options")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineOptions", response = com.ruoyi.knowledge.domain.dto.KbOutlineOptions.class)
     public AjaxResult options() {
         return success(service.options());
     }
 
     @PreAuthorize("@ss.hasPermi('knowledge:outline:list')")
     @GetMapping("/list")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineList", response = com.ruoyi.knowledge.domain.KbOutline.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title", "catalogKind", "subject", "textbookVersion", "grade", "term", "status"})
     public TableDataInfo list(KbOutline query) {
         startPage();
         return getDataTable(service.list(query));
@@ -44,6 +46,7 @@ public class KbOutlineController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:outline:query')")
     @GetMapping("/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineGet", response = com.ruoyi.knowledge.domain.KbOutline.class)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }
