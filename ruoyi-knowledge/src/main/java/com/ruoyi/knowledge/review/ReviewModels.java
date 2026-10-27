@@ -12,14 +12,18 @@ public final class ReviewModels {
 
     public record Command(@NotBlank @Size(max = 128) String operationId,
             @NotNull @JsonFormat(shape = JsonFormat.Shape.STRING) Long expectedRowVersion,
-            @NotBlank @Size(max = 2000) String reason, Boolean contentReviewed, String reasonCategory) {
+            @NotBlank @Size(max = 2000) String reason, Boolean contentReviewed, String reasonCategory,
+            @Size(max = 64) String expectedContentHash) {
         public Command(String operationId, Long expectedRowVersion, String reason, Boolean contentReviewed) {
-            this(operationId, expectedRowVersion, reason, contentReviewed, null);
+            this(operationId, expectedRowVersion, reason, contentReviewed, null, null);
+        }
+        public Command(String operationId, Long expectedRowVersion, String reason, Boolean contentReviewed, String reasonCategory) {
+            this(operationId, expectedRowVersion, reason, contentReviewed, reasonCategory, null);
         }
     }
     public record BatchItem(@NotNull @JsonFormat(shape = JsonFormat.Shape.STRING) Long questionId,
             String operationId, @JsonFormat(shape = JsonFormat.Shape.STRING) Long expectedRowVersion,
-            String reason, Boolean contentReviewed) { }
+            String reason, Boolean contentReviewed, @Size(max = 64) String expectedContentHash) { }
     public record BatchCommand(@NotNull @Size(min = 1, max = 50) List<BatchItem> items) { }
     public record BatchResult(List<ItemResult> items) { }
     public record ItemResult(String questionId, String operationId, String outcome, Receipt receipt,
@@ -28,7 +32,7 @@ public final class ReviewModels {
     public record Impact(long materialCount, long productCount, long childCount) { }
     public record Readiness(String questionId, String rowVersion, String status, boolean eligible,
             boolean canApprove, String policyVersion, List<Check> checks, Impact impact,
-            Receipt approvalReceipt, String contentHash) { }
+            Receipt approvalReceipt, String contentHash, String approvalBasisHash) { }
     public record QuestionAsset(Long questionId, Long assetId) { }
     public record Fact(String kind, String identity, String stamp) { }
     public record Snapshot(String questionId, String rowVersion, String status, String contentHash,

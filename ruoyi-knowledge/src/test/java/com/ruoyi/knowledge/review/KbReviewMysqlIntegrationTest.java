@@ -100,7 +100,7 @@ class KbReviewMysqlIntegrationTest {
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < 43; i++) {
             long id = seed(); ids.add(id);
-            if (i % 2 == 0) service.act(id, "APPROVE", command("approve-" + id, 0));
+            if (i % 2 == 0) service.act(id, "APPROVE", command(id, "approve-" + id, 0));
             else jdbc.update("UPDATE kb_question SET status='READY' WHERE id=?", id); // unapproved legacy fixture
         }
         String projection = service.approvalJson();
@@ -134,10 +134,10 @@ class KbReviewMysqlIntegrationTest {
             public void rollback(TransactionStatus status) { manager.rollback(status); }
         };
         String operation = "lost-ack-" + UUID.randomUUID();
-        ReviewModels.Receipt first = reviews(lossy).act(id, "APPROVE", command(operation, 0));
+        ReviewModels.Receipt first = reviews(lossy).act(id, "APPROVE", command(id, operation, 0));
         assertEquals("CONFIRMED", first.outcome());
         assertEquals("1", first.rowVersion());
-        assertEquals(first, service.act(id, "APPROVE", command(operation, 0)));
+        assertEquals(first, service.act(id, "APPROVE", command(id, operation, 0)));
         assertEquals(1L, questions.selectById(id).getRowVersion());
     }
 
@@ -170,7 +170,7 @@ class KbReviewMysqlIntegrationTest {
         ledger.prepare(new ReviewModels.Prepared("operation-a", "a".repeat(64), "APPROVE", "teacher", "fixture", KbReviewService.POLICY, before, after, null));
         gate.enter(); try { service.recover(); } finally { gate.leave(); }
         assertEquals("ABORTED", ledger.terminal("operation-a").outcome());
-        service.act(id, "APPROVE", command("operation-b", 0));
+        service.act(id, "APPROVE", command(id, "operation-b", 0));
         assertEquals("ABORTED", ledger.terminal("operation-a").outcome());
         assertEquals("CONFIRMED", ledger.terminal("operation-b").outcome());
     }
@@ -187,7 +187,7 @@ class KbReviewMysqlIntegrationTest {
 
     @Test void actualSpringReadAdvicePinsCountRowsAndConstantPageAssociationQueries() {
         List<Long> ids = new ArrayList<>();
-        for (int i=0;i<25;i++) { long id=seed(); ids.add(id); service.act(id,"APPROVE",command("page-"+id,0)); }
+        for (int i=0;i<25;i++) { long id=seed(); ids.add(id); service.act(id, "APPROVE", command(id, "page-"+id,0)); }
         try (var context = context()) {
             var listService = context.getBean(com.ruoyi.knowledge.service.impl.KbQuestionServiceImpl.class);
             for (int size : List.of(10,20)) {
@@ -209,7 +209,7 @@ class KbReviewMysqlIntegrationTest {
     }
 
     @Test void outerSpringGateCoversRequiresNewRollbackAndDependencyInvalidation() {
-        long id=seed();service.act(id,"APPROVE",command("before-dependency",0));
+        long id=seed();service.act(id, "APPROVE", command(id, "before-dependency",0));
         try (var context=context()) {
             TestMutation mutation=context.getBean(TestMutation.class);
             assertThrows(IllegalStateException.class,()->mutation.importFailure(id));
@@ -227,11 +227,11 @@ class KbReviewMysqlIntegrationTest {
     @Test void explicitStopKeepsChildrenButContentErrorAtomicallyDraftsThemAndReplays() {
         long parent=seed(), child=seed();
         jdbc.update("INSERT INTO kb_question_derivation(parent_question_id,child_question_id,is_primary,operation,change_note,preserved_note) VALUES(?,?,true,'CHANGE_VALUES','fixture change','fixture preserve')",parent,child);
-        service.act(parent,"APPROVE",command("parent",0));service.act(child,"APPROVE",command("child",0));
+        service.act(parent, "APPROVE", command(parent, "parent",0));service.act(child, "APPROVE", command(child, "child",0));
         var stop=new ReviewModels.Command("stop",1L,"只停用该母题",null,"STOP_USE");
         assertTrue(service.act(parent,"SOFT_DELETE",stop).affectedQuestionIds().isEmpty());
         assertEquals(List.of(child),mapper.usableIds(List.of(parent,child),service.approvalJson()));
-        service.act(parent,"RESTORE",command("restore",2));service.act(parent,"APPROVE",command("again",3));
+        service.act(parent, "RESTORE", command(parent, "restore",2));service.act(parent, "APPROVE", command(parent, "again",3));
         var error=new ReviewModels.Command("error",4L,"解答有误",null,"CONTENT_ERROR");
         var receipt=service.act(parent,"RETURN_TO_DRAFT",error);
         assertEquals(List.of(Long.toString(child)),receipt.affectedQuestionIds());
@@ -241,7 +241,7 @@ class KbReviewMysqlIntegrationTest {
     }
 
     @Test void completeContentAndAddedDependenciesInvalidateEvenWithoutAnIllicitVersionBump() {
-        long id=seed(),extra=seed();service.act(id,"APPROVE",command("current",0));
+        long id=seed(),extra=seed();service.act(id, "APPROVE", command(id, "current",0));
         String projection=service.approvalJson();assertEquals(List.of(id),mapper.usableIds(List.of(id),projection));
         jdbc.update("UPDATE kb_question SET answer_html='<p>3</p>' WHERE id=?",id);
         assertTrue(mapper.usableIds(List.of(id),projection).isEmpty());
@@ -252,19 +252,19 @@ class KbReviewMysqlIntegrationTest {
 
     @Test void singleCalculationNeedsBoundProofAndRestoreNeverRestoresApproval() {
         long id=seed();jdbc.update("UPDATE kb_question SET question_type='CALCULATION' WHERE id=?",id);
-        assertThrows(ServiceException.class,()->service.act(id,"APPROVE",command("too-small",0)));
+        assertThrows(ServiceException.class,()->service.act(id, "APPROVE", command(id, "too-small",0)));
         proofs.grant(new ReviewModels.ExceptionCommand("small-proof","原件就是一道完整母题",id,0L,null,null,null));
-        service.act(id,"APPROVE",command("with-proof",0));
+        service.act(id, "APPROVE", command(id, "with-proof",0));
         assertTrue(service.readiness(id).eligible());
         assertTrue(service.readiness(id).checks().stream().filter(c->c.code().equals("GRANULARITY")).allMatch(ReviewModels.Check::passed));
         service.act(id,"SOFT_DELETE",new ReviewModels.Command("remove",1L,"暂停使用",null,"STOP_USE"));
-        service.act(id,"RESTORE",command("restore-proof",2));
+        service.act(id, "RESTORE", command(id, "restore-proof",2));
         assertEquals("DRAFT",questions.selectById(id).getStatus());assertFalse(service.readiness(id).canApprove());
-        assertThrows(ServiceException.class,()->service.act(id,"APPROVE",command("old-proof",3)));
+        assertThrows(ServiceException.class,()->service.act(id, "APPROVE", command(id, "old-proof",3)));
     }
 
     @Test void parentFreezeRequiresFullAnswerAndDependencyHashAndRecordsCommittedEvidence() {
-        long parent=seed(),child=seed();service.act(parent,"APPROVE",command("freeze-parent",0));
+        long parent=seed(),child=seed();service.act(parent, "APPROVE", command(parent, "freeze-parent",0));
         String hash=service.readiness(parent).contentHash();
         var freeze=service.freezeParent(parent,1L,"stem",hash);
         assertEquals(freeze.contentHash(),service.freezeParent(parent,1L,null,hash).contentHash());
@@ -279,24 +279,24 @@ class KbReviewMysqlIntegrationTest {
         proofs.bindImport(saved,input,"teacher","b".repeat(64));
         assertFalse(proofs.derivedEvidence(full(child)),"orphan file cannot establish committed import");
         jdbc.update("INSERT INTO kb_import_identity VALUES('derived-key','teacher',?,?)",child,"b".repeat(64));
-        service.act(child,"APPROVE",command("derive-approved",0));
+        service.act(child, "APPROVE", command(child, "derive-approved",0));
         service.act(parent,"SOFT_DELETE",new ReviewModels.Command("parent-stop",1L,"只停用母题",null,"STOP_USE"));
         assertTrue(service.readiness(child).eligible());
         assertTrue(proofs.derivedEvidence(full(child)));
-        service.act(parent,"RESTORE",command("parent-restore",2));service.act(parent,"APPROVE",command("parent-again",3));
+        service.act(parent, "RESTORE", command(parent, "parent-restore",2));service.act(parent, "APPROVE", command(parent, "parent-again",3));
         service.act(parent,"SOFT_DELETE",new ReviewModels.Command("parent-error",4L,"原来源错误",null,"SOURCE_ERROR"));
         assertFalse(proofs.derivedEvidence(full(child)));assertFalse(service.readiness(child).canApprove());
     }
 
     @Test void corruptedOrOrphanLedgerEvidenceCannotReuseCachedProjection() throws Exception {
-        long id=seed();service.act(id,"APPROVE",command("corrupt",0));service.approvalJson();
+        long id=seed();service.act(id, "APPROVE", command(id, "corrupt",0));service.approvalJson();
         Path path=directory.resolve(KbReviewLedger.hash("corrupt".getBytes(java.nio.charset.StandardCharsets.UTF_8))+".prepare.json");
         java.nio.file.Files.writeString(path,"broken");
         assertThrows(ServiceException.class,()->service.approvalJson());
     }
 
     @Test void realDetailAndReadinessExposeExactlyTheDeriveHashWithoutPerRowListReads() {
-        long id=seed();service.act(id,"APPROVE",command("detail",0));
+        long id=seed();service.act(id, "APPROVE", command(id, "detail",0));
         try(var context=context()) {
             var questionsService=context.getBean(com.ruoyi.knowledge.service.impl.KbQuestionServiceImpl.class);
             KbQuestion detail=questionsService.get(id);
@@ -312,6 +312,62 @@ class KbReviewMysqlIntegrationTest {
         }
     }
 
+    @Test void approvalRejectsChangedDependenciesEvenWhenDraftRowVersionDidNotChange() {
+        long id = seed();
+        String viewedHash = service.readiness(id).contentHash();
+        var viewed = new ReviewModels.Command("stale-view", 0L, "已核对旧页面完整内容", true, null, viewedHash);
+        jdbc.update("UPDATE kb_source SET row_version=row_version+1 WHERE id=?", id);
+        assertEquals(0L, questions.selectById(id).getRowVersion());
+        assertNotEquals(viewedHash, service.readiness(id).contentHash());
+        assertEquals(409, assertThrows(ServiceException.class, () -> service.act(id, "APPROVE", viewed)).getCode());
+        assertNull(ledger.prepared("stale-view"));
+        assertEquals("DRAFT", questions.selectById(id).getStatus());
+        assertEquals(400, assertThrows(ServiceException.class, () -> service.act(id, "APPROVE",
+                new ReviewModels.Command("missing-basis", 0L, "缺少审查摘要", true))).getCode());
+        var current = command(id, "fresh-view", 0);
+        var receipt = service.act(id, "APPROVE", current);
+        assertEquals("CONFIRMED", receipt.outcome());
+        assertEquals(receipt, service.act(id, "APPROVE", current));
+    }
+
+    @Test void batchApprovalPreservesPerItemViewedContentPreconditions() {
+        long first = seed(), second = seed();
+        String staleHash = service.readiness(first).contentHash();
+        String currentHash = service.readiness(second).contentHash();
+        jdbc.update("UPDATE kb_source SET row_version=row_version+1 WHERE id=?", first);
+        var result = service.approveBatch(new ReviewModels.BatchCommand(List.of(
+                new ReviewModels.BatchItem(first, "batch-stale", 0L, "已审查完整内容", true, staleHash),
+                new ReviewModels.BatchItem(second, "batch-current", 0L, "已审查完整内容", true, currentHash))));
+        assertEquals("CONFLICT", result.items().get(0).outcome());
+        assertEquals("SUCCESS", result.items().get(1).outcome());
+        assertEquals("DRAFT", questions.selectById(first).getStatus());
+        assertTrue(service.readiness(second).eligible());
+    }
+
+    @Test void approvalBasisHashBindsConfirmedSnapshotWithoutChangingReceiptContentHash() {
+        long id = seed();
+        assertNull(service.readiness(id).approvalBasisHash());
+        ReviewModels.Receipt receipt = service.act(id, "APPROVE", command(id, "basis-domain", 0));
+        ReviewModels.Readiness approved = service.readiness(id);
+        assertTrue(approved.eligible());
+        assertEquals(KbQuestionFingerprint.content(full(id)), receipt.contentHash());
+        assertNotEquals(receipt.contentHash(), approved.contentHash(), "body and full dependency basis are different hash domains");
+        assertEquals(approved.contentHash(), approved.approvalBasisHash());
+        var json = tools.jackson.databind.json.JsonMapper.builder().build();
+        assertEquals(approved.approvalBasisHash(), json.readTree(json.writeValueAsString(approved)).get("approvalBasisHash").asString());
+        jdbc.update("UPDATE kb_source SET row_version=row_version+1 WHERE id=?", id);
+        ReviewModels.Readiness stale = service.readiness(id);
+        assertFalse(stale.eligible());
+        assertEquals(approved.approvalBasisHash(), stale.approvalBasisHash(), "historical approval basis must never use current facts");
+        assertEquals(receipt.contentHash(), stale.approvalReceipt().contentHash());
+        assertNotEquals(stale.contentHash(), stale.approvalBasisHash());
+        jdbc.update("UPDATE kb_question SET answer_html='<p>changed answer</p>' WHERE id=?", id);
+        ReviewModels.Readiness changed = service.readiness(id);
+        assertEquals(approved.approvalBasisHash(), changed.approvalBasisHash());
+        assertNotEquals(changed.contentHash(), changed.approvalBasisHash());
+        assertFalse(changed.eligible());
+    }
+
     @Test void databaseCommitWithoutConfirmationSurvivesLedgerRestart() throws Exception {
         long id=seed();ledger.close();
         ledger=new KbReviewLedger(directory.toString()) {
@@ -323,12 +379,12 @@ class KbReviewMysqlIntegrationTest {
         };
         proofs=new KbReviewProofs(ledger,gate,mapper,questions,mock(KbCandidateProxy.class),new KbRecordHtmlConverter(),new KbHtmlCodec());
         service=reviews(manager);
-        assertEquals(503,assertThrows(ServiceException.class,()->service.act(id,"APPROVE",command("interrupted-confirm",0))).getCode());
+        assertEquals(503,assertThrows(ServiceException.class,()->service.act(id, "APPROVE", command(id, "interrupted-confirm",0))).getCode());
         assertEquals("READY",questions.selectById(id).getStatus());assertNull(ledger.terminal("interrupted-confirm"));
         ledger.close();ledger=new KbReviewLedger(directory.toString());
         proofs=new KbReviewProofs(ledger,gate,mapper,questions,mock(KbCandidateProxy.class),new KbRecordHtmlConverter(),new KbHtmlCodec());
         service=reviews(manager);
-        assertEquals("CONFIRMED",service.act(id,"APPROVE",command("interrupted-confirm",0)).outcome());
+        assertEquals("CONFIRMED",service.act(id, "APPROVE", command(id, "interrupted-confirm",0)).outcome());
         assertEquals(1L,questions.selectById(id).getRowVersion());
     }
 
@@ -400,7 +456,7 @@ class KbReviewMysqlIntegrationTest {
         });}
     }
 
-    private static ReviewModels.Command command(String id, long version) { return new ReviewModels.Command(id, version, "真实隔离测试审查", true); }
+    private ReviewModels.Command command(long questionId, String id, long version) { return new ReviewModels.Command(id, version, "真实隔离测试审查", true, null, proofs.basis(full(questionId))); }
     private KbQuestion full(long id) {
         KbQuestion q=questions.selectById(id); q.setKpIds(questions.selectKpIds(id)); q.setAssetIds(questions.selectAssetIds(id)); return q;
     }

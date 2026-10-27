@@ -25,19 +25,18 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long root = seed(fixture), child = seed(fixture), grandchild = seed(fixture);
-            fixture.service.act(root, "APPROVE", command("fresh-root", 0));
+            fixture.service.act(root, "APPROVE", command(fixture, root, "fresh-root", 0));
             derive(fixture, root, child, "fresh-child");
-            fixture.service.act(child, "APPROVE", command("fresh-child-approved", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "fresh-child-approved", 0));
             derive(fixture, child, grandchild, "fresh-grandchild");
-            fixture.service.act(grandchild, "APPROVE", command("fresh-grandchild-approved", 0));
+            fixture.service.act(grandchild, "APPROVE", command(fixture, grandchild, "fresh-grandchild-approved", 0));
             fixture.service.act(root, "RETURN_TO_DRAFT", new ReviewModels.Command(
                     "fresh-root-source-error", 1L, "原来源错误", null, "SOURCE_ERROR"));
             assertEquals("DRAFT", fixture.questions.selectById(grandchild).getStatus());
             assertAll(
                     () -> assertFalse(fixture.proofs.derivedEvidence(full(fixture, grandchild)),
                             "a SOURCE_ERROR affecting the frozen parent must invalidate its old approval basis"),
-                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(grandchild, "APPROVE",
-                            command("fresh-grandchild-again", 2))));
+                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(grandchild, "APPROVE", command(fixture, grandchild, "fresh-grandchild-again", 2))));
         } finally { fixture.close(); }
     }
 
@@ -72,11 +71,11 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long root = seed(fixture), child = seed(fixture), grandchild = seed(fixture);
-            fixture.service.act(root, "APPROVE", command("stop-root", 0));
+            fixture.service.act(root, "APPROVE", command(fixture, root, "stop-root", 0));
             derive(fixture, root, child, "stop-child");
-            fixture.service.act(child, "APPROVE", command("stop-child-approved", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "stop-child-approved", 0));
             derive(fixture, child, grandchild, "stop-grandchild");
-            fixture.service.act(grandchild, "APPROVE", command("stop-grandchild-approved", 0));
+            fixture.service.act(grandchild, "APPROVE", command(fixture, grandchild, "stop-grandchild-approved", 0));
             fixture.service.act(child, "SOFT_DELETE", new ReviewModels.Command(
                     "stop-parent", 1L, "仅停止选用父题", null, "STOP_USE"));
             assertTrue(fixture.service.readiness(grandchild).eligible(), "STOP_USE alone keeps frozen descendants valid");
@@ -89,8 +88,7 @@ class KbReviewFreshContextRegressionTest {
             assertAll(
                     () -> assertFalse(fixture.service.readiness(grandchild).canApprove(),
                             "a stopped intermediate parent is absent from affectedAfter but its frozen evidence still depends on the ancestor"),
-                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(grandchild, "APPROVE",
-                            command("stopped-grandchild-again", 2))));
+                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(grandchild, "APPROVE", command(fixture, grandchild, "stopped-grandchild-again", 2))));
         } finally { fixture.close(); }
     }
 
@@ -98,12 +96,12 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long root = seed(fixture), child = seed(fixture);
-            fixture.service.act(root, "APPROVE", command("corrected-before", 0));
+            fixture.service.act(root, "APPROVE", command(fixture, root, "corrected-before", 0));
             fixture.service.act(root, "RETURN_TO_DRAFT", new ReviewModels.Command(
                     "corrected-error", 1L, "来源待复核", null, "SOURCE_ERROR"));
-            fixture.service.act(root, "APPROVE", command("corrected-reviewed", 2));
+            fixture.service.act(root, "APPROVE", command(fixture, root, "corrected-reviewed", 2));
             derive(fixture, root, child, "corrected-child");
-            fixture.service.act(child, "APPROVE", command("corrected-child-approved", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "corrected-child-approved", 0));
             assertTrue(fixture.service.readiness(child).eligible());
         } finally { fixture.close(); }
     }
@@ -112,18 +110,17 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long primary = seed(fixture), auxiliary = seed(fixture), child = seed(fixture);
-            fixture.service.act(primary, "APPROVE", command("aux-primary", 0));
-            fixture.service.act(auxiliary, "APPROVE", command("aux-parent", 0));
+            fixture.service.act(primary, "APPROVE", command(fixture, primary, "aux-primary", 0));
+            fixture.service.act(auxiliary, "APPROVE", command(fixture, auxiliary, "aux-parent", 0));
             derive(fixture, primary, child, "aux-child", auxiliary);
-            fixture.service.act(child, "APPROVE", command("aux-child-approved", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "aux-child-approved", 0));
             fixture.service.act(auxiliary, "RETURN_TO_DRAFT", new ReviewModels.Command(
                     "aux-source-error", 1L, "辅助来源错误", null, "SOURCE_ERROR"));
             assertEquals("DRAFT", fixture.questions.selectById(child).getStatus());
             assertAll(
                     () -> assertFalse(fixture.service.readiness(child).canApprove(),
                             "auxiliary ancestry was part of the saved derivation and cannot be ignored on reapproval"),
-                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(child, "APPROVE",
-                            command("aux-child-again", 2))));
+                    () -> assertThrows(ServiceException.class, () -> fixture.service.act(child, "APPROVE", command(fixture, child, "aux-child-again", 2))));
         } finally { fixture.close(); }
     }
 
@@ -148,10 +145,10 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long primary = seed(fixture), auxiliary = seed(fixture), child = seed(fixture);
-            fixture.service.act(primary, "APPROVE", command("aux-stop-primary", 0));
-            fixture.service.act(auxiliary, "APPROVE", command("aux-stop-source", 0));
+            fixture.service.act(primary, "APPROVE", command(fixture, primary, "aux-stop-primary", 0));
+            fixture.service.act(auxiliary, "APPROVE", command(fixture, auxiliary, "aux-stop-source", 0));
             derive(fixture, primary, child, "aux-stop-child", auxiliary);
-            fixture.service.act(child, "APPROVE", command("aux-stop-approved", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "aux-stop-approved", 0));
             fixture.service.act(auxiliary, "SOFT_DELETE", new ReviewModels.Command(
                     "aux-stop", 1L, "仅停止使用", null, "STOP_USE"));
             assertTrue(fixture.service.readiness(child).eligible());
@@ -165,11 +162,11 @@ class KbReviewFreshContextRegressionTest {
         var fixture = fixture();
         try {
             long root = seed(fixture), parent = seed(fixture), child = seed(fixture);
-            fixture.service.act(root, "APPROVE", command("dep-root", 0));
+            fixture.service.act(root, "APPROVE", command(fixture, root, "dep-root", 0));
             derive(fixture, root, parent, "dep-parent");
-            fixture.service.act(parent, "APPROVE", command("dep-parent-approve", 0));
+            fixture.service.act(parent, "APPROVE", command(fixture, parent, "dep-parent-approve", 0));
             derive(fixture, parent, child, "dep-child");
-            fixture.service.act(child, "APPROVE", command("dep-child-approve", 0));
+            fixture.service.act(child, "APPROVE", command(fixture, child, "dep-child-approve", 0));
             var method = KbReviewMysqlIntegrationTest.class.getDeclaredMethod("context"); method.setAccessible(true);
             try (var context = (org.springframework.context.annotation.AnnotationConfigApplicationContext) method.invoke(fixture)) {
                 var source = new com.ruoyi.knowledge.domain.KbSource(); source.setId(root);
@@ -214,8 +211,8 @@ class KbReviewFreshContextRegressionTest {
         KbQuestion value = fixture.questions.selectById(id); value.setKpIds(fixture.questions.selectKpIds(id));
         value.setAssetIds(fixture.questions.selectAssetIds(id)); return value;
     }
-    private static ReviewModels.Command command(String key, long version) {
-        return new ReviewModels.Command(key, version, "独立复核当前完整内容", true);
+    private static ReviewModels.Command command(KbReviewMysqlIntegrationTest fixture, long id, String key, long version) {
+        return new ReviewModels.Command(key, version, "独立复核当前完整内容", true, null, fixture.proofs.basis(full(fixture, id)));
     }
     private static void derive(KbReviewMysqlIntegrationTest fixture, long parent, long child, String key) {
         derive(fixture, parent, child, key, null);

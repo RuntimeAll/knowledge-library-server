@@ -4213,7 +4213,7 @@
       "group": "review",
       "action": "READ",
       "summary": "读取题目当前可用性与批准前置条件",
-      "responsibility": "只读汇总当前版本、完整内容摘要、硬性检查和历史引用影响；不修改状态、不代替实际内容审查。",
+      "responsibility": "只读汇总当前版本、完整内容摘要、硬性检查和历史引用影响；不修改状态、不代替实际内容审查。 approvalBasisHash仅从已确认批准快照的正文摘要与关联事实计算，可能与当前contentHash不同；不重算或覆盖历史批准。",
       "prdRefs": [
         "PRD-010"
       ],
@@ -4332,7 +4332,8 @@
             "childCount": 0
           },
           "approvalReceipt": null,
-          "contentHash": "0000000000000000000000000000000000000000000000000000000000000000"
+          "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "approvalBasisHash": null
         }
       },
       "failureExample": {
@@ -4362,7 +4363,7 @@
         "data.beforeRowVersion": "操作前冻结版本字符串。",
         "data.rowVersion": "已确认操作完成后的版本字符串。",
         "data.status": "本次已确认结果状态。",
-        "data.contentHash": "完整内容与关联事实摘要，用于批准和派生条件，详情只读。",
+        "data.contentHash": "当前题目正文字段及关联事实的完整摘要；用于派生expectedParentContentHash。与approvalBasisHash属同一哈希域。",
         "data.policyVersion": "实际质量策略版本；旧策略证明不能自动继承。",
         "data.actor": "执行操作的真实登录账号。",
         "data.reason": "已持久化的审核原因。",
@@ -4391,7 +4392,9 @@
         "data.impact.childCount": "派生子题数量。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "data.approvalBasisHash": "可空；已确认批准快照的完整正文及关联事实摘要。当前完整contentHash与本值相等仍须同时检查eligible及批准ID/版本/状态；旧批准保留原值，不随当前依赖重算。",
+        "data.approvalReceipt.contentHash": "历史批准回执的题目正文字段摘要，不包含关联事实；保持原语义，不得直接与完整readiness.contentHash比较。"
       }
     },
     "review.approve": {
@@ -4410,7 +4413,7 @@
         "pagination": "不适用：单对象；批审不是分页查询。",
         "limits": "operationId最长128字符；原因1至2000字符；影响超过1000题拒绝并要求精确治理计划。",
         "idempotency": "operationId绑定真实账号、目标、动作、版本和完整请求；原键原请求恢复，改参冲突。",
-        "concurrency": "持有唯一后端写屏障后校验版本；PREPARE、数据库提交、终态确认分别持久化，未决操作拒绝放行。",
+        "concurrency": "持有唯一后端写屏障后校验版本；PREPARE、数据库提交、终态确认分别持久化，未决操作拒绝放行。 批准在锁内同时核对expectedRowVersion及expectedContentHash，拒绝同版本旧依赖页面。",
         "partialSuccess": "单题动作及其依赖影响为同一受控事务；网络错误不能推断已经回滚。",
         "recovery": "保留原键和原请求同键重试；若已回滚，读取当前版本后以新键发起新审查，不自动重绑版本。"
       },
@@ -4434,7 +4437,7 @@
         {
           "httpStatus": 200,
           "code": 400,
-          "condition": "请求身份、版本、原因或审核确认不完整",
+          "condition": "请求身份、版本、原因或审核确认不完整；批准缺少合法expectedContentHash",
           "message": "审核需稳定operationId、当前版本及1至2000字符原因",
           "retryable": false,
           "recovery": "重新读取当前对象并修正输入；不得覆盖新版本。"
@@ -4450,7 +4453,7 @@
         {
           "httpStatus": 200,
           "code": 409,
-          "condition": "版本、状态、数量或依赖不满足本动作",
+          "condition": "版本、状态、数量或依赖不满足本动作；完整内容或关联事实与已审查摘要不同",
           "message": "题目版本已变化，请重新查看后审核",
           "retryable": false,
           "recovery": "重新读取当前对象并修正输入；不得覆盖新版本。"
@@ -4493,7 +4496,8 @@
         "operationId": "docs:review:q1:v1",
         "expectedRowVersion": "1",
         "reason": "已核对完整题面、解答和来源",
-        "contentReviewed": true
+        "contentReviewed": true,
+        "expectedContentHash": "0000000000000000000000000000000000000000000000000000000000000000"
       },
       "parameterDescriptions": {
         "code": "业务结果码，HTTP成功仍须检查该字段。",
@@ -4544,7 +4548,8 @@
         "data.impact.childCount": "派生子题数量。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。"
       }
     },
     "review.returnToDraft": {
@@ -4699,7 +4704,8 @@
         "data.impact.childCount": "派生子题数量。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。"
       }
     },
     "review.softDelete": {
@@ -4852,7 +4858,8 @@
         "data.impact.childCount": "派生子题数量。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。"
       }
     },
     "review.restore": {
@@ -5004,7 +5011,8 @@
         "data.impact.childCount": "派生子题数量。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。"
       }
     },
     "review.granularityException": {
@@ -5193,7 +5201,7 @@
         "pagination": "不适用：单对象；批审不是分页查询。",
         "limits": "items须1至50个唯一questionId；每项operationId、版本、原因和contentReviewed独立必填。",
         "idempotency": "operationId绑定真实账号、目标、动作、版本和完整请求；原键原请求恢复，改参冲突。",
-        "concurrency": "持有唯一后端写屏障后校验版本；PREPARE、数据库提交、终态确认分别持久化，未决操作拒绝放行。",
+        "concurrency": "持有唯一后端写屏障后校验版本；PREPARE、数据库提交、终态确认分别持久化，未决操作拒绝放行。 批准在锁内同时核对expectedRowVersion及expectedContentHash，拒绝同版本旧依赖页面。",
         "partialSuccess": "逐项事务；必须检查每项outcome、receipt、errorCode和retryable，已有成功项保持。",
         "recovery": "保留原键和原请求同键重试；若已回滚，读取当前版本后以新键发起新审查，不自动重绑版本。"
       },
@@ -5217,7 +5225,7 @@
         {
           "httpStatus": 200,
           "code": 400,
-          "condition": "请求身份、版本、原因或审核确认不完整",
+          "condition": "请求身份、版本、原因或审核确认不完整；批准缺少合法expectedContentHash",
           "message": "审核需稳定operationId、当前版本及1至2000字符原因",
           "retryable": false,
           "recovery": "重新读取当前对象并修正输入；不得覆盖新版本。"
@@ -5233,7 +5241,7 @@
         {
           "httpStatus": 200,
           "code": 409,
-          "condition": "版本、状态、数量或依赖不满足本动作",
+          "condition": "版本、状态、数量或依赖不满足本动作；完整内容或关联事实与已审查摘要不同",
           "message": "题目版本已变化，请重新查看后审核",
           "retryable": false,
           "recovery": "重新读取当前对象并修正输入；不得覆盖新版本。"
@@ -5292,7 +5300,8 @@
             "operationId": "docs:review:q1:v1",
             "expectedRowVersion": "1",
             "reason": "已核对完整题面、解答和来源",
-            "contentReviewed": true
+            "contentReviewed": true,
+            "expectedContentHash": "0000000000000000000000000000000000000000000000000000000000000000"
           }
         ]
       },
@@ -5358,7 +5367,9 @@
         "data.items.nextAction": "需要调用方采取的下一步。",
         "data.checks[].code": "稳定检查项目编码。",
         "data.checks[].message": "检查结果说明。",
-        "data.checks[].passed": "本项是否通过。"
+        "data.checks[].passed": "本项是否通过。",
+        "expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。",
+        "items.expectedContentHash": "APPROVE新操作必填已查看详情的完整contentHash（64位小写SHA-256，包含正文及依赖）；同rowVersion依赖变化也返回409，缺少返回400。其他状态动作可不传；不得提交前自动换成最新摘要。"
       }
     },
     "review.getCandidate": {

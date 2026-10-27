@@ -30,7 +30,7 @@ class KbReviewCandidateCompletionTest {
             assertEquals(0L,fixture.questions.selectById(id).getRowVersion());
             assertNotNull(fixture.proofs.matching(full(fixture,id)), "same candidate's first exact verification preserves count-only proof");
             assertTrue(fixture.service.readiness(id).canApprove());
-            fixture.service.act(id,"APPROVE",new ReviewModels.Command("completed-approve",0L,"已核对完整来源和答案",true));
+            fixture.service.act(id,"APPROVE",new ReviewModels.Command("completed-approve",0L,"已核对完整来源和答案",true,null,fixture.service.readiness(id).contentHash()));
             assertTrue(fixture.service.readiness(id).eligible());
             verify(fixture,id,7,1);
             assertEquals("DRAFT",fixture.questions.selectById(id).getStatus());

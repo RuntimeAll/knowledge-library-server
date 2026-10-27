@@ -66,7 +66,9 @@ public class KbReviewService {
             return new ReviewModels.Readiness(id.toString(), question.getRowVersion().toString(),
                     question.getStatus(), eligible, "DRAFT".equals(question.getStatus())
                     && checks.stream().allMatch(ReviewModels.Check::passed), POLICY, checks,
-                    mapper.impact(id), approved == null ? null : receipt(approved, "CONFIRMED"), proofs.basis(question));
+                    mapper.impact(id), approved == null ? null : receipt(approved, "CONFIRMED"), proofs.basis(question),
+                    approved == null ? null : KbReviewLedger.hash(JSON.toJSONBytes(
+                            List.of(approved.after().contentHash(), approved.after().facts()))));
         } finally { gate.leave(); }
     }
 
@@ -125,6 +127,10 @@ public class KbReviewService {
             case "APPROVE" -> {
                 if (!"DRAFT".equals(question.getStatus())) { throw new ServiceException("只有草稿可批准", 409); }
                 if (!Boolean.TRUE.equals(command.contentReviewed())) { throw new ServiceException("须确认已审查当前完整题面和解答", 400); }
+                if (command.expectedContentHash() == null || !command.expectedContentHash().matches("[a-f0-9]{64}"))
+                    { throw new ServiceException("批准须携带已审查版本的完整contentHash，请重新读取题目", 400); }
+                if (!Objects.equals(command.expectedContentHash(), proofs.basis(question)))
+                    { throw new ServiceException("题目内容或依赖已变化，请重新读取并审查", 409); }
                 List<String> failures = checks(question).stream().filter(check -> !check.passed())
                         .map(ReviewModels.Check::message).toList();
                 if (!failures.isEmpty()) { throw new ServiceException(String.join("；", failures), 409); }
@@ -174,7 +180,7 @@ public class KbReviewService {
         for (ReviewModels.BatchItem item : command.items()) {
             try {
                 ReviewModels.Receipt receipt = act(item.questionId(), "APPROVE", new ReviewModels.Command(
-                        item.operationId(), item.expectedRowVersion(), item.reason(), item.contentReviewed()));
+                        item.operationId(), item.expectedRowVersion(), item.reason(), item.contentReviewed(), null, item.expectedContentHash()));
                 results.add(new ReviewModels.ItemResult(item.questionId().toString(), item.operationId(),
                         "SUCCESS", receipt, null, null, false, null));
             } catch (ServiceException failure) {
