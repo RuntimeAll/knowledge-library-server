@@ -114,7 +114,14 @@ public class KbHtmlCodec {
                 throw new ServiceException("排版语义必须位于stem、answer或analysis区域内部");
         }
         KbHtmlLayout.validateParts(stem, answer, analysis);
-        return new HtmlQuestionDocument(key, intent, id, version, parent, metadata, stem, answer, analysis, fingerprint);
+        Element candidate = original.clone();
+        candidate.removeAttr("data-granularity-exception-id");
+        String candidateHash = KbAssetServiceImpl.sha256(candidate.outerHtml().getBytes(StandardCharsets.UTF_8));
+        return new HtmlQuestionDocument(key, intent, id, version, parent, metadata, stem, answer, analysis, fingerprint,
+                number(original, "data-expected-parent-row-version"),
+                original.hasAttr("data-expected-parent-stem-hash") ? original.attr("data-expected-parent-stem-hash") : null,
+                original.hasAttr("data-granularity-exception-id") ? original.attr("data-granularity-exception-id") : null,
+                candidateHash, original.hasAttr("data-expected-parent-content-hash") ? original.attr("data-expected-parent-content-hash") : null);
     }
 
     public String sanitize(Element part) {

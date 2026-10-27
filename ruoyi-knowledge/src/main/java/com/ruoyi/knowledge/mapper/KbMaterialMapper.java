@@ -38,6 +38,8 @@ public interface KbMaterialMapper {
 
     long countProducts(Long id);
 
+    List<Long> verifiedQuestionIds(@Param("questionIds") List<Long> questionIds, @Param("sourceIds") List<Long> sourceIds);
+
     boolean realInSources(
             @Param("questionId") Long questionId, @Param("sourceIds") List<Long> sourceIds);
 

@@ -33,6 +33,7 @@
         </where>
          ORDER BY id DESC
     </select>
+    <select id="forQuestions" resultMap="result">SELECT qs.*,s.title source_title FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id WHERE qs.question_id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY qs.question_id,qs.id</select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_question_source (question_id,source_id,question_no,page_from,page_to,score,match_status,matched_stem_hash,evidence_asset_id,verification_note,verified_at,row_version,create_by,create_time,update_by,update_time,remark) VALUES (#{questionId},#{sourceId},#{questionNo},#{pageFrom},#{pageTo},#{score},#{matchStatus},#{matchedStemHash},#{evidenceAssetId},#{verificationNote},#{verifiedAt},0,#{createBy},NOW(),#{createBy},NOW(),#{remark})</insert>
     <update id="update">UPDATE kb_question_source SET question_id=#{questionId},source_id=#{sourceId},question_no=#{questionNo},page_from=#{pageFrom},page_to=#{pageTo},score=#{score},match_status=#{matchStatus},matched_stem_hash=#{matchedStemHash},evidence_asset_id=#{evidenceAssetId},verification_note=#{verificationNote},verified_at=#{verifiedAt},row_version=row_version+1,update_by=#{updateBy},update_time=NOW(),remark=#{remark} WHERE id=#{id} AND row_version=#{rowVersion}</update>
     <delete id="deleteById">DELETE FROM kb_question_source WHERE id=#{id}</delete>
@@ -40,6 +41,11 @@
         SELECT COUNT(*) FROM kb_question_source WHERE source_id=#{sourceId} AND question_no=#{questionNo} AND page_from=#{pageFrom} AND COALESCE(page_to,page_from)=COALESCE(#{pageTo},#{pageFrom})
         <if test="id != null">AND id != #{id}</if>
     </select>
+    <resultMap id="exportAncestor" type="com.ruoyi.knowledge.exporting.KbExportAncestor" extends="result"><result property="descendantQuestionId" column="descendant_question_id"/></resultMap>
+    <select id="ancestorsForQuestions" resultMap="exportAncestor">WITH RECURSIVE ancestors(root,id) AS (
+      SELECT child_question_id,parent_question_id FROM kb_question_derivation WHERE child_question_id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+      UNION DISTINCT SELECT a.root,d.parent_question_id FROM kb_question_derivation d JOIN ancestors a ON a.id=d.child_question_id)
+      SELECT a.root descendant_question_id,qs.* FROM ancestors a JOIN kb_question_source qs ON qs.question_id=a.id ORDER BY a.root,qs.id</select>
     <select id="selectAncestorSources" resultMap="result">WITH RECURSIVE ancestors(id) AS (SELECT parent_question_id FROM kb_question_derivation WHERE child_question_id=#{id} UNION DISTINCT SELECT d.parent_question_id FROM kb_question_derivation d JOIN ancestors a ON a.id=d.child_question_id) SELECT qs.* FROM kb_question_source qs JOIN ancestors a ON a.id=qs.question_id</select>
     <select id="selectCatalogList" resultMap="result">SELECT qs.* FROM kb_question_source qs <where><if test="questionId != null">AND qs.question_id=#{questionId}</if><if test="sourceId != null">AND qs.source_id=#{sourceId}</if><if test="matchStatus != null and matchStatus != ''">AND qs.match_status=#{matchStatus}</if><if test="collectionKind != null and collectionKind != ''">AND EXISTS(SELECT 1 FROM kb_occurrence_collection c WHERE c.occurrence_id=qs.id AND c.collection_kind=#{collectionKind})</if></where> ORDER BY qs.id DESC</select>
     <select id="matchedExam" resultMap="result">SELECT qs.*,s.title AS source_title FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id JOIN kb_verified_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id WHERE qs.question_id=#{questionId} AND q.content_kind='EXERCISE' AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash

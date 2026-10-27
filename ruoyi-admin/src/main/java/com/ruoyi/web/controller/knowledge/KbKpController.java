@@ -41,6 +41,7 @@ public class KbKpController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:kp:query')")
     @GetMapping("/names")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpNames", response = com.ruoyi.knowledge.dto.KbKpName.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.ARRAY)
     public AjaxResult names(@RequestParam("ids") List<Long> ids) {
         return success(service.names(ids));
     }
@@ -55,6 +56,7 @@ public class KbKpController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:kp:add')")
     @Log(title = "考点管理", businessType = BusinessType.INSERT)
     @PostMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpCreate", response = com.ruoyi.knowledge.domain.KbKp.class, published = false)
     public AjaxResult create(@RequestBody KbKp data) {
         data.setCreateBy(getUsername());
         return success(service.create(data));
@@ -63,6 +65,7 @@ public class KbKpController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:kp:edit')")
     @Log(title = "考点管理", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpUpdate", response = com.ruoyi.knowledge.domain.KbKp.class, published = false)
     public AjaxResult update(@RequestBody KbKp data) {
         data.setUpdateBy(getUsername());
         return success(service.update(data));
@@ -71,6 +74,7 @@ public class KbKpController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:kp:remove')")
     @Log(title = "考点管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.kpDelete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();

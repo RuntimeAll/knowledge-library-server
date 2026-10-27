@@ -37,6 +37,14 @@
     <insert id="insertItem">INSERT INTO kb_material_item(material_id,question_id,seq) VALUES(#{id},#{questionId},#{seq})</insert>
     <insert id="insertReference">INSERT INTO kb_material_reference_source(material_id,source_id,note) VALUES(#{id},#{ref.sourceId},#{ref.note})</insert>
     <select id="countProducts" resultType="long">SELECT (SELECT COUNT(*) FROM kb_product WHERE material_id=#{id})+(SELECT COUNT(*) FROM kb_render_job WHERE material_id=#{id})</select>
+    <select id="verifiedQuestionIds" resultType="long">
+        SELECT DISTINCT q.id FROM kb_question q JOIN kb_question_source qs ON qs.question_id=q.id
+        JOIN kb_source s ON s.id=qs.source_id JOIN kb_verified_exam_source e ON e.source_id=qs.source_id
+        WHERE q.content_kind='EXERCISE' AND s.source_kind='EXAM' AND e.authenticity_status='VERIFIED'
+        AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash
+        AND q.id IN <foreach collection="questionIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+        AND qs.source_id IN <foreach collection="sourceIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
     <select id="realInSources" resultType="boolean">
         SELECT EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id
         JOIN kb_verified_exam_source e ON e.source_id=qs.source_id JOIN kb_question q ON q.id=qs.question_id

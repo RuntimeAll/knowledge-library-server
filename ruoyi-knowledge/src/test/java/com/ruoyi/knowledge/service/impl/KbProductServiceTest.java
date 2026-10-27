@@ -38,7 +38,7 @@ class KbProductServiceTest {
         input.setQuestionRefs(List.of());
         var service = new KbProductServiceImpl(mapper, materials,
                 mock(IKbAssetService.class), mock(IKbMaterialService.class),
-                mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertEquals(409, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
         verify(mapper, never()).insert(any());
         verify(materials).lockById(7L);
@@ -57,7 +57,7 @@ class KbProductServiceTest {
         input.setExpectedMaterialRowVersion(9L);
         var service = new KbProductServiceImpl(mapper, materials,
                 mock(IKbAssetService.class), mock(IKbMaterialService.class),
-                mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertEquals(400, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
         verify(mapper, never()).insert(any());
     }
@@ -88,7 +88,7 @@ class KbProductServiceTest {
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
                         mock(IKbMaterialService.class),
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertEquals(
                 409, assertThrows(ServiceException.class, () -> service.create(input)).getCode());
         verify(mapper, never()).insert(any());
@@ -115,7 +115,7 @@ class KbProductServiceTest {
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
                         mock(IKbMaterialService.class),
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertEquals(
                 409,
                 assertThrows(ServiceException.class, () -> service.catalog(1L, command, "agent"))
@@ -144,7 +144,7 @@ class KbProductServiceTest {
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
                         mock(IKbMaterialService.class),
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertEquals(
                 409, assertThrows(ServiceException.class, () -> service.update(input)).getCode());
         verify(mapper, never()).update(any());
@@ -179,7 +179,7 @@ class KbProductServiceTest {
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
                         mock(IKbMaterialService.class),
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertThrows(ServiceException.class, () -> service.update(input));
         assertEquals(1L, stored.getRootProductId());
         assertEquals(2L, stored.getPreviousProductId());
@@ -205,7 +205,7 @@ class KbProductServiceTest {
                         mock(KbMaterialMapper.class),
                         mock(IKbAssetService.class),
                         mock(IKbMaterialService.class),
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         assertThrows(ServiceException.class, () -> service.update(input));
         verify(mapper, never()).update(any());
     }
@@ -250,7 +250,7 @@ class KbProductServiceTest {
                         materials,
                         mock(IKbAssetService.class),
                         materialService,
-                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class));
+                        mock(com.ruoyi.knowledge.service.IKbCatalogService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         service.create(input);
         verify(mapper).lockById(1L);
         assertEquals(3, input.getVersionNo());

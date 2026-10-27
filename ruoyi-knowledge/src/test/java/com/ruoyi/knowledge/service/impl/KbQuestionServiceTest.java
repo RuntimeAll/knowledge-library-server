@@ -42,7 +42,7 @@ class KbQuestionServiceTest {
                         mock(IKbKpService.class),
                         mock(IKbAssetService.class),
                         mock(KbOccurrenceMapper.class),
-                        mock(KnowledgeDictionary.class));
+                        mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         persisted = new KbQuestion();
         persisted.setId(1L);
         persisted.setRowVersion(3L);
@@ -186,14 +186,13 @@ class KbQuestionServiceTest {
     }
 
     @Test
-    void readyContentRequiresSubjectAndQuestionTypeInAdditionToBodyAndKnowledgePoint() {
+    void clearingClassificationAlwaysRemovesReadyAndExposesMissingChecks() {
         KbQuestion input = metadataInput();
-        input.setSubject("");
-        input.setQuestionType("");
-        ServiceException exception = assertThrows(ServiceException.class, () -> service.updateMetadata(input));
-        assertTrue(exception.getMessage().contains("缺少学科"));
-        assertTrue(exception.getMessage().contains("缺少题型"));
-        verify(mapper, never()).update(any());
+        input.setSubject(""); input.setQuestionType("");
+        KbQuestion saved = service.updateMetadata(input);
+        assertEquals("DRAFT",saved.getStatus());
+        assertTrue(saved.getReadinessReasons().size() >= 2);
+        verify(mapper).update(any());
     }
 
     @Test
@@ -210,13 +209,13 @@ class KbQuestionServiceTest {
     }
 
     @Test
-    void knowledgeReviewCanBeReadyAndMetadataEditPreservesItsBody() {
+    void knowledgeReviewMetadataEditReturnsToDraftAndPreservesItsBody() {
         KbQuestion input = metadataInput();
         input.setContentKind("KNOWLEDGE");
         input.setQuestionType("KNOWLEDGE_REVIEW");
         KbQuestion saved = service.updateMetadata(input);
         assertEquals("KNOWLEDGE", saved.getContentKind());
-        assertEquals("READY", saved.getStatus());
+        assertEquals("DRAFT", saved.getStatus());
         assertEquals("<p>1+1</p>", saved.getStemHtml());
     }
 
@@ -242,6 +241,7 @@ class KbQuestionServiceTest {
 
     @Test
     void draftCanRetainAnExplicitlyUnclassifiedType() {
+        persisted.setStatus("DRAFT");
         KbQuestion input = metadataInput();
         input.setQuestionType("");
         input.setStatus("DRAFT");

@@ -32,18 +32,20 @@ public class KbProductServiceImpl implements IKbProductService {
     private final IKbAssetService assets;
     private final IKbMaterialService materialService;
     private final IKbCatalogService catalog;
+    private final com.ruoyi.knowledge.review.KbReviewService reviews;
 
     public KbProductServiceImpl(
             KbProductMapper mapper,
             KbMaterialMapper materials,
             IKbAssetService assets,
             IKbMaterialService materialService,
-            IKbCatalogService catalog) {
+            IKbCatalogService catalog, com.ruoyi.knowledge.review.KbReviewService reviews) {
         this.mapper = mapper;
         this.materials = materials;
         this.assets = assets;
         this.materialService = materialService;
         this.catalog = catalog;
+        this.reviews = reviews;
     }
 
     public void prepareQuery(KbCatalogQuery query) {
@@ -97,6 +99,7 @@ public class KbProductServiceImpl implements IKbProductService {
         return list(query);
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public KbProduct create(KbProduct data) {
         if (data.getRenderJobId() != null || data.getRenderOutputKey() != null)
@@ -146,26 +149,15 @@ public class KbProductServiceImpl implements IKbProductService {
             }
         }
         catalog.prepareProduct(data, null);
+        if (data.getQuestionRefs() != null && !data.getQuestionRefs().isEmpty())
+            { reviews.assertUsable(data.getQuestionRefs().stream().map(KbProductQuestionRef::getQuestionId).distinct().toList()); }
         if (data.getPreviousProductId() != null) {
             KbProduct previous = get(data.getPreviousProductId());
             if (!java.util.Objects.equals(audienceRole(previous), audienceRole(data)))
                 throw new ServiceException("不同使用角色必须分别建立成品版本链", 409);
         }
         validate(data);
-        data.setSnapshotJson(
-                com.alibaba.fastjson2.JSON.toJSONString(
-                        new KbProductCatalogSnapshot(
-                                "kb-product-snapshot/v2",
-                                data.getMaterialId(),
-                                material == null ? null : material.getRowVersion(),
-                                material == null ? null : material.getTitle(),
-                                data.getProfile(),
-                                data.getOutlineScopes(),
-                                data.getDeclaredKpIds(),
-                                data.getRegions(),
-                                data.getQuestionRefs(),
-                                data.getReferenceSources()),
-                        com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString));
+        data.setSnapshotJson(productSnapshot(data, material));
         if (data.getPreviousProductId() != null) {
             KbProduct previous = found(mapper.selectById(data.getPreviousProductId()));
             data.setRootProductId(previous.getRootProductId());
@@ -180,6 +172,23 @@ public class KbProductServiceImpl implements IKbProductService {
         return get(data.getId());
     }
 
+    private String productSnapshot(KbProduct data, KbMaterial material) {
+        return                 com.alibaba.fastjson2.JSON.toJSONString(
+                        new KbProductCatalogSnapshot(
+                                "kb-product-snapshot/v2",
+                                data.getMaterialId(),
+                                material == null ? null : material.getRowVersion(),
+                                material == null ? null : material.getTitle(),
+                                data.getProfile(),
+                                data.getOutlineScopes(),
+                                data.getDeclaredKpIds(),
+                                data.getRegions(),
+                                data.getQuestionRefs(),
+                                data.getReferenceSources()),
+                        com.alibaba.fastjson2.JSONWriter.Feature.WriteLongAsString);
+    }
+
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public KbProduct update(KbProduct data) {
         found(mapper.lockById(data.getId()));
@@ -219,6 +228,7 @@ public class KbProductServiceImpl implements IKbProductService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public void delete(Long[] values) {
         for (Long id : values) {
@@ -239,6 +249,7 @@ public class KbProductServiceImpl implements IKbProductService {
         return data.getProfile() == null ? null : data.getProfile().getAudienceRole();
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public KbProduct catalog(Long id, KbCatalogCommand command, String actor) {
         KbProduct data = new KbProduct();

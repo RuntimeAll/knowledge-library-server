@@ -52,6 +52,7 @@ class KbExportServiceTest {
         question.setAnalysisHtml("<p>过程</p>");
         question.setKpIds(List.of(12L));
         KbKp point = new KbKp();
+        point.setId(12L);
         point.setName("公式考点");
         point.setSubject("MATH");
         point.setOutlineIds(List.of(9007199254740993L));
@@ -76,13 +77,14 @@ class KbExportServiceTest {
         byte[] image = new byte[]{(byte) 0x89, 'P', 'N', 'G', 0, 0, 0, 0};
         KbAsset asset = new KbAsset();
         asset.setAssetId(4L);
+        asset.setStatus("READY");
         asset.setOriginalName("原题图.png");
         asset.setContentType("image/png");
         asset.setFileSize((long) image.length);
         asset.setSha256(KbAssetServiceImpl.sha256(image));
         when(assets.requireReady(4L)).thenReturn(asset);
         when(assets.openContent(4L)).thenAnswer(i -> new ByteArrayInputStream(image));
-        KbExportServiceImpl service = new KbExportServiceImpl(questions, mock(IKbMaterialService.class), points,
+        KbExportServiceImpl service = service(questions, mock(IKbMaterialService.class), points,
                 mock(IKbSourceService.class), assets, imports);
         List<Entry> entries = unzip(service.export(new KbExportRequest(List.of(9L), null, true)));
         String index = text(entries, "index.html");
@@ -133,7 +135,7 @@ class KbExportServiceTest {
 
     @Test
     void requiresExactlyOneSelectionAndRejectsDuplicates() {
-        KbExportServiceImpl service = new KbExportServiceImpl(mock(IKbQuestionService.class), mock(IKbMaterialService.class),
+        KbExportServiceImpl service = service(mock(IKbQuestionService.class), mock(IKbMaterialService.class),
                 mock(IKbKpService.class), mock(IKbSourceService.class), mock(IKbAssetService.class), mock(KbImportMapper.class));
         assertThrows(ServiceException.class, () -> service.export(new KbExportRequest(List.of(1L), 2L, true)));
         assertThrows(ServiceException.class, () -> service.export(new KbExportRequest(List.of(1L, 1L), null, true)));
@@ -164,6 +166,7 @@ class KbExportServiceTest {
         question.setStemHtml(stem.append("</div>").toString());
         question.setAnswerHtml(answer.append("</div>").toString());
         question.setKpIds(List.of());
+        question.setAssetIds(List.of());
         when(questions.get(15L)).thenReturn(question);
         KbLineage lineage = new KbLineage();
         lineage.setParents(List.of());
@@ -171,6 +174,7 @@ class KbExportServiceTest {
         when(questions.lineage(15L)).thenReturn(lineage);
         IKbMaterialService materials = mock(IKbMaterialService.class);
         var material = new com.ruoyi.knowledge.domain.KbMaterial();
+        material.setSelectionValid(true);
         material.setTitle("整组计算专项");
         material.setRowVersion(8L);
         material.setQuestionIds(List.of(15L));
@@ -179,7 +183,7 @@ class KbExportServiceTest {
         declaredReference.setNote("采用讲义的分层设计；该来源不是本题直接出处");
         material.setReferenceSources(List.of(declaredReference));
         when(materials.get(7L)).thenReturn(material);
-        var service = new KbExportServiceImpl(questions, materials, mock(IKbKpService.class),
+        var service = service(questions, materials, mock(IKbKpService.class),
                 mock(IKbSourceService.class), mock(IKbAssetService.class), imports);
         var entries = unzip(service.export(new KbExportRequest(null, 7L, true)));
         String html = text(entries, "index.html");
@@ -203,6 +207,17 @@ class KbExportServiceTest {
         assertTrue(manifest.getJSONArray("questions").getJSONObject(0).getJSONArray("directSources").isEmpty());
         assertEquals(10, manifest.getJSONArray("questions").getJSONObject(0).getIntValue("itemCount"));
         assertEquals("a".repeat(64), manifest.getJSONArray("questions").getJSONObject(0).getString("stemHash"));
+    }
+
+    private KbExportServiceImpl service(IKbQuestionService questions, IKbMaterialService materials,
+            IKbKpService points, IKbSourceService sources, IKbAssetService assets, KbImportMapper imports) {
+        var qMapper=mock(com.ruoyi.knowledge.mapper.KbQuestionMapper.class);
+        var occurrences=mock(com.ruoyi.knowledge.mapper.KbOccurrenceMapper.class);
+        var assetMapper=mock(com.ruoyi.knowledge.storage.mapper.KbAssetMapper.class);
+        when(questions.getMany(anyList())).thenAnswer(call -> ((List<Long>)call.getArgument(0)).stream().map(questions::get).toList());
+        when(points.getMany(anyList())).thenAnswer(call -> ((List<Long>)call.getArgument(0)).stream().map(points::get).toList());
+        when(assetMapper.selectByIds(anyList())).thenAnswer(call -> ((List<Long>)call.getArgument(0)).stream().map(assets::requireReady).toList());
+        return new KbExportServiceImpl(assets,new KbExportSnapshotLoader(questions,materials,points,qMapper,occurrences,assetMapper,imports,mock(com.ruoyi.knowledge.review.KbReviewService.class)));
     }
 
     private List<Entry> unzip(byte[] bytes) throws Exception {

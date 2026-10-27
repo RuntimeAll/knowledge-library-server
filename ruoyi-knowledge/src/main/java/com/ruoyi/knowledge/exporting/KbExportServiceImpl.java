@@ -16,18 +16,11 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONWriter;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.knowledge.domain.KbKp;
-import com.ruoyi.knowledge.domain.KbMaterial;
 import com.ruoyi.knowledge.domain.KbQuestion;
-import com.ruoyi.knowledge.dto.KbLineage;
 import com.ruoyi.knowledge.html.HtmlMetadata;
 import com.ruoyi.knowledge.html.KbHtmlCodec;
 import com.ruoyi.knowledge.html.KbHtmlLayout;
-import com.ruoyi.knowledge.importing.mapper.KbImportMapper;
 import com.ruoyi.knowledge.importing.dto.KbRecordsRequest;
-import com.ruoyi.knowledge.service.IKbKpService;
-import com.ruoyi.knowledge.service.IKbMaterialService;
-import com.ruoyi.knowledge.service.IKbQuestionService;
-import com.ruoyi.knowledge.service.IKbSourceService;
 import com.ruoyi.knowledge.storage.IKbAssetService;
 import com.ruoyi.knowledge.storage.KbAssetServiceImpl;
 import com.ruoyi.knowledge.storage.domain.KbAsset;
@@ -42,53 +35,24 @@ import org.springframework.stereotype.Service;
 @Service
 public class KbExportServiceImpl implements IKbExportService {
     private static final long MAX_ASSET_BYTES = 200L * 1024 * 1024;
-    private final IKbQuestionService questions;
-    private final IKbMaterialService materials;
-    private final IKbKpService knowledgePoints;
-    private final IKbSourceService sources;
     private final IKbAssetService assets;
-    private final KbImportMapper imports;
+    private final KbExportSnapshotLoader snapshots;
 
-    public KbExportServiceImpl(IKbQuestionService questions, IKbMaterialService materials,
-                           IKbKpService knowledgePoints, IKbSourceService sources,
-                           IKbAssetService assets, KbImportMapper imports) {
-        this.questions = questions;
-        this.materials = materials;
-        this.knowledgePoints = knowledgePoints;
-        this.sources = sources;
-        this.assets = assets;
-        this.imports = imports;
+    public KbExportServiceImpl(IKbAssetService assets, KbExportSnapshotLoader snapshots) {
+        this.assets=assets;
+        this.snapshots=snapshots;
     }
 
     public byte[] export(KbExportRequest request) {
-        if (request == null || (request.materialId() == null) == (request.questionIds() == null || request.questionIds().isEmpty())) {
-            throw new ServiceException("请提供题目ID列表或专项ID，且只能提供一种");
-        }
-        List<Long> ids;
-        String title = "知识库选题导出";
-        String materialRowVersion = null;
-        List<KbExportManifest.MaterialReferenceSource> materialReferenceSources = null;
-        if (request.materialId() != null) {
-            materials.assertSelectionValid(request.materialId());
-            KbMaterial material = materials.get(request.materialId());
-            title = material.getTitle();
-            materialRowVersion = String.valueOf(material.getRowVersion());
-            materialReferenceSources = material.getReferenceSources() == null ? List.of()
-                    : material.getReferenceSources().stream()
-                            .map(ref -> new KbExportManifest.MaterialReferenceSource(
-                                    ref.getSourceId().toString(), ref.getNote())).toList();
-            ids = material.getQuestionIds();
-        } else {
-            ids = request.questionIds();
-        }
-        if (ids == null || ids.isEmpty() || ids.size() > 200 || ids.stream().anyMatch(java.util.Objects::isNull)
-                || new HashSet<>(ids).size() != ids.size()) {
-            throw new ServiceException("导出请选择1至200个不重复的题目");
-        }
-        boolean answers = !Boolean.FALSE.equals(request.includeAnswers());
-        String origin = imports.selectInstanceId();
-        List<KbQuestion> selected = ids.stream().map(questions::get).toList();
-        List<KbAsset> files = assetList(selected, answers);
+        KbExportSnapshotLoader.Snapshot frozen=snapshots.load(request);
+        String title=frozen.title();
+        String origin=frozen.origin();
+        String materialRowVersion=frozen.material()==null ? null : frozen.material().getRowVersion().toString();
+        List<KbExportManifest.MaterialReferenceSource> materialReferenceSources=frozen.material()==null ? null : frozen.material().getReferenceSources().stream()
+                .map(ref -> new KbExportManifest.MaterialReferenceSource(ref.getSourceId().toString(),ref.getNote())).toList();
+        boolean answers=!Boolean.FALSE.equals(request.includeAnswers());
+        List<KbQuestion> selected=frozen.questions();
+        List<KbAsset> files=assetList(selected,answers,frozen.assets());
         List<KbExportManifest.QuestionEntry> entries = new ArrayList<>();
         List<KbExportManifest.AssetEntry> fileEntries = new ArrayList<>();
         List<KbRecordsRequest.Record> jsonRecords = new ArrayList<>();
@@ -100,14 +64,15 @@ public class KbExportServiceImpl implements IKbExportService {
                         question.getId(), question.getRowVersion(), null, metadata(question), null, question.getStemHtml(),
                         null, answers ? question.getAnswerHtml() : null, null, answers ? question.getAnalysisHtml() : null,
                         null, null, null));
-                Element article = article(question, "", answers);
+                Element article = article(question, "", answers, frozen.assets());
                 index.body().appendChild(article);
                 Document single = document(question.getTitle(), origin, "../");
-                single.body().appendChild(article(question, "../", answers));
+                single.body().appendChild(article(question, "../", answers, frozen.assets()));
                 put(zip, "questions/" + question.getId() + ".html", single.outerHtml().getBytes(StandardCharsets.UTF_8));
                 List<KbExportManifest.KnowledgePoint> points = new ArrayList<>();
                 for (Long kpId : question.getKpIds() == null ? List.<Long>of() : question.getKpIds()) {
-                    KbKp point = knowledgePoints.get(kpId);
+                    KbKp point = frozen.points().get(kpId);
+                    if (point == null) { throw new ServiceException("冻结考点缺失", 409); }
                     List<String> outlineIds = point.getOutlineIds() == null ? List.of()
                             : point.getOutlineIds().stream().map(String::valueOf).toList();
                     List<KbExportManifest.OutlineBinding> bindings = point.getOutlineBindings() == null ? List.of()
@@ -119,12 +84,11 @@ public class KbExportServiceImpl implements IKbExportService {
                             point.getSubject(), point.getParentId() == null ? null : point.getParentId().toString(),
                             point.getRootId() == null ? null : point.getRootId().toString(), point.getRootName(), point.getDepth(), outlineIds, bindings));
                 }
-                KbLineage lineage = questions.lineage(question.getId());
                 entries.add(new KbExportManifest.QuestionEntry(question.getId().toString(), question.getRowVersion().toString(),
                         question.getTitle(), "questions/" + question.getId() + ".html", question.getCreationKind(), question.getSourceNote(),
                         question.getContentKind(), question.getSubject(), question.getQuestionType(), question.getDifficulty(), question.getStatus(),
                         question.getLayoutMode(), question.getUnitKind(), question.getPaginationMode(), question.getLayoutNote(), question.getItemCount(), question.getHasImage(),
-                        points, sources.occurrences(question.getId(), null), lineage.getParents(), lineage.getAncestorSources(), question.getStemHash()));
+                        points, frozen.occurrences().getOrDefault(question.getId(),List.of()), frozen.parents().getOrDefault(question.getId(),List.of()), frozen.ancestors().getOrDefault(question.getId(),List.of()), question.getStemHash()));
             }
             for (KbAsset file : files) {
                 fileBytes += file.getFileSize();
@@ -144,7 +108,7 @@ public class KbExportServiceImpl implements IKbExportService {
             put(zip, "index.html", index.outerHtml().getBytes(StandardCharsets.UTF_8));
             KbExportManifest manifest = new KbExportManifest(KbHtmlCodec.SCHEMA, origin, OffsetDateTime.now().toString(), title,
                     request.materialId() == null ? null : request.materialId().toString(), answers, entries, fileEntries,
-                    materialRowVersion, materialReferenceSources);
+                    materialRowVersion, materialReferenceSources, request.purpose()==null ? "NORMAL" : request.purpose());
             put(zip, "manifest.json", JSON.toJSONString(manifest, JSONWriter.Feature.PrettyFormat).getBytes(StandardCharsets.UTF_8));
             KbRecordsRequest jsonRequest = new KbRecordsRequest(KbRecordsRequest.SCHEMA,
                     "export-" + java.util.UUID.randomUUID(), null, origin, jsonRecords, List.of());
@@ -158,7 +122,7 @@ public class KbExportServiceImpl implements IKbExportService {
         }
     }
 
-    private List<KbAsset> assetList(List<KbQuestion> selected, boolean answers) {
+    private List<KbAsset> assetList(List<KbQuestion> selected, boolean answers, java.util.Map<Long,KbAsset> frozen) {
         Set<Long> ids = new LinkedHashSet<>();
         for (KbQuestion question : selected) {
             collectImages(question.getStemHtml(), ids);
@@ -167,7 +131,7 @@ public class KbExportServiceImpl implements IKbExportService {
                 collectImages(question.getAnalysisHtml(), ids);
             }
         }
-        return ids.stream().map(assets::requireReady).toList();
+        return ids.stream().map(id -> frozenAsset(frozen,id)).toList();
     }
 
     private void collectImages(String html, Set<Long> ids) {
@@ -194,7 +158,7 @@ public class KbExportServiceImpl implements IKbExportService {
         return doc;
     }
 
-    private Element article(KbQuestion question, String root, boolean answers) {
+    private Element article(KbQuestion question, String root, boolean answers, java.util.Map<Long,KbAsset> frozen) {
         Element article = new Element("article");
         article.attr("data-client-key", "question-" + question.getId());
         article.attr("data-intent", "update");
@@ -207,10 +171,10 @@ public class KbExportServiceImpl implements IKbExportService {
         String json = JSON.toJSONString(metadata(question)).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
         article.appendElement("script").attr("type", "application/json").attr("data-kb-metadata", "")
                 .appendChild(new DataNode(json));
-        appendPart(article, "stem", question.getStemHtml(), root);
+        appendPart(article, "stem", question.getStemHtml(), root, frozen);
         if (answers) {
-            appendPart(article, "answer", question.getAnswerHtml(), root);
-            appendPart(article, "analysis", question.getAnalysisHtml(), root);
+            appendPart(article, "answer", question.getAnswerHtml(), root, frozen);
+            appendPart(article, "analysis", question.getAnalysisHtml(), root, frozen);
         }
         return article;
     }
@@ -221,15 +185,21 @@ public class KbExportServiceImpl implements IKbExportService {
                 question.getLayoutMode(), question.getUnitKind(), question.getPaginationMode(), question.getLayoutNote());
     }
 
-    private void appendPart(Element article, String name, String html, String root) {
+    private void appendPart(Element article, String name, String html, String root, java.util.Map<Long,KbAsset> frozen) {
         Element part = article.appendElement("section").attr("data-part", name).html(html == null ? "" : html);
         for (Element image : part.select("img")) {
             if (!image.hasAttr("data-asset-id")) { throw new ServiceException("题图缺少资产登记，不能离线导出"); }
             Long id;
             try { id = Long.valueOf(image.attr("data-asset-id")); }
             catch (NumberFormatException e) { throw new ServiceException("题图资产编号无效"); }
-            image.attr("src", root + assetPath(assets.requireReady(id)));
+            image.attr("src", root + assetPath(frozenAsset(frozen,id)));
         }
+    }
+
+    private static KbAsset frozenAsset(java.util.Map<Long,KbAsset> frozen, Long id) {
+        KbAsset value=frozen.get(id);
+        if (value==null || !"READY".equals(value.getStatus())) { throw new ServiceException("题图不在完整冻结资产中",409); }
+        return value;
     }
 
     private String assetPath(KbAsset asset) {

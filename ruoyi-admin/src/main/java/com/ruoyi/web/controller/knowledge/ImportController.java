@@ -62,6 +62,7 @@ public class ImportController extends BaseController {
     @PostMapping("/html")
     @PreAuthorize("@ss.hasPermi('knowledge:import:execute')")
     @Log(title = "知识库HTML导入", businessType = BusinessType.IMPORT, isSaveRequestData = false)
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.importHtml", response = com.ruoyi.knowledge.importing.domain.KbImportBatch.class, published = false)
     public AjaxResult upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "resources", required = false) List<MultipartFile> resources,

@@ -58,7 +58,7 @@ class KbRenderServiceTest {
                         mock(KbKpMapper.class),
                         sources,
                         mock(KbProductMapper.class),
-                        mock(IKbProductService.class));
+                        mock(IKbProductService.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         var template = KbLayoutProtocolTest.template();
         KbLayoutProtocol.template(template);
         when(mapper.lockVersion(1L)).thenReturn(template);
@@ -75,6 +75,7 @@ class KbRenderServiceTest {
         question.setAssetIds(List.of());
         when(questionMapper.lockById(7L)).thenReturn(question);
         when(questions.get(7L)).thenReturn(question);
+        when(questions.getMany(anyList())).thenReturn(List.of(question));
         when(occurrenceMapper.selectList(any())).thenReturn(List.of());
         SysUser user = new SysUser();
         user.setUserId(42L);
@@ -128,6 +129,37 @@ class KbRenderServiceTest {
         s.setQuestionRefs(List.of(q));
         r.setSections(List.of(s));
         return r;
+    }
+
+    @Test
+    void exactKeyLookupUsesActualActorAndDoesNotRevalidateOrWriteFrozenJob() {
+        var query = new KbRenderJob();query.setIdempotencyKey("test:key");query.setActorUserId(999L);
+        var found = new KbRenderJob();found.setId(88L);found.setIdempotencyKey("test:key");found.setRequestHash("a".repeat(64));
+        when(mapper.jobs(any())).thenReturn(List.of(found));
+        assertEquals(List.of(found),service.list(query));
+        assertEquals(42L,query.getActorUserId());
+        verify(mapper).jobs(query);
+        verifyNoMoreInteractions(mapper);
+        verifyNoInteractions(questions,questionMapper,templates,catalog,sources,assets);
+    }
+
+    @Test
+    void administratorExactKeyLookupCannotSubstituteAnotherActor() {
+        var user = new SysUser();user.setUserId(1L);user.setUserName("admin");
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new LoginUser(1L,null,user,Set.of()),null,List.of()));
+        var query = new KbRenderJob();query.setIdempotencyKey("test:key");query.setActorUserId(42L);
+        service.list(query);
+        assertEquals(1L,query.getActorUserId());
+        verify(mapper).jobs(query);
+        verifyNoMoreInteractions(mapper);
+    }
+
+    @Test
+    void emptyExactKeyCannotFallBackToUnfilteredListing() {
+        var query = new KbRenderJob();query.setIdempotencyKey(" ");
+        assertThrows(ServiceException.class,()->service.list(query));
+        verifyNoInteractions(mapper);
     }
 
     @Test
@@ -354,7 +386,7 @@ class KbRenderServiceTest {
         occurrence.setSourceId(3L);
         occurrence.setQuestionId(7L);
         occurrence.setEvidenceAssetId(77L);
-        when(occurrenceMapper.selectList(any())).thenReturn(List.of(occurrence));
+        when(occurrenceMapper.forQuestions(anyList())).thenReturn(List.of(occurrence));
         var source = new com.ruoyi.knowledge.domain.KbSource();
         source.setId(3L);
         source.setTitle("原卷与核实附件");

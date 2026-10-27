@@ -58,6 +58,20 @@ public class KbKpServiceImpl implements IKbKpService {
         return page;
     }
 
+    public List<KbKp> getMany(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) { return List.of(); }
+        if (ids.size() > 2000) { throw new ServiceException("考点批查最多2000项", 400); }
+        List<KbKp> rows = mapper.selectByIds(ids.stream().distinct().toList());
+        Map<Long, List<KbKpOutlineRow>> bindings = mapper.selectOutlineRowsForKps(ids).stream().collect(Collectors.groupingBy(KbKpOutlineRow::getKpId));
+        for (KbKp point : rows) {
+            List<KbKpOutlineRow> links = bindings.getOrDefault(point.getId(), List.of());
+            point.setOutlineIds(links.stream().map(KbKpOutlineRow::getOutlineId).distinct().toList());
+            point.setOutlineBindings(links.stream().map(KbKpOutlineRow::getBinding).filter(java.util.Objects::nonNull).toList());
+        }
+        attachHierarchy(rows, mapper.selectEdges());
+        return rows;
+    }
+
     public List<KbKpName> names(List<Long> ids) {
         if (ids == null || ids.isEmpty() || ids.size() > 200)
             throw new ServiceException("每次查询须提供 1 至 200 个考点 ID", 400);
@@ -88,6 +102,7 @@ public class KbKpServiceImpl implements IKbKpService {
         return item;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "KP_CREATE")
     @Transactional
     public KbKp create(KbKp data) {
         data.setId(null);
@@ -99,6 +114,7 @@ public class KbKpServiceImpl implements IKbKpService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "KP")
     @Transactional
     public KbKp update(KbKp data) {
         mapper.lockGraph();
@@ -113,6 +129,7 @@ public class KbKpServiceImpl implements IKbKpService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public void delete(Long[] values) {
         mapper.lockGraph();

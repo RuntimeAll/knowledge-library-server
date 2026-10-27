@@ -32,7 +32,7 @@ class KbListBatchingTest {
             KbQuestionMapper questions = mock(KbQuestionMapper.class);
             KbOccurrenceMapper occurrences = mock(KbOccurrenceMapper.class);
             KbQuestionServiceImpl service = new KbQuestionServiceImpl(questions, mock(KbKpMapper.class),
-                    mock(IKbKpService.class), mock(IKbAssetService.class), occurrences, mock(KnowledgeDictionary.class));
+                    mock(IKbKpService.class), mock(IKbAssetService.class), occurrences, mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
             Page<KbQuestion> page = new Page<>(2, pageSize);
             page.setTotal(97);
             List<Long> ids = IntStream.range(0, pageSize).mapToObj(i -> 100L - i).toList();
@@ -128,7 +128,7 @@ class KbListBatchingTest {
         KbQuestionMapper questions = mock(KbQuestionMapper.class);
         KbOccurrenceMapper occurrences = mock(KbOccurrenceMapper.class);
         KbQuestionServiceImpl questionService = new KbQuestionServiceImpl(questions, mock(KbKpMapper.class),
-                mock(IKbKpService.class), mock(IKbAssetService.class), occurrences, mock(KnowledgeDictionary.class));
+                mock(IKbKpService.class), mock(IKbAssetService.class), occurrences, mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         Page<KbQuestion> emptyQuestions = new Page<>(100, 10); emptyQuestions.setTotal(3);
         when(questions.selectList(any())).thenReturn(emptyQuestions);
         assertSame(emptyQuestions, questionService.list(new KbQuestionQuery()));

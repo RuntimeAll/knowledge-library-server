@@ -95,14 +95,17 @@ public final class CoreApiSchemas {
         if (api.shape() == CoreApi.Shape.BINARY) {
             return new StringSchema().format("binary");
         }
-        Schema payload = resolve(api.response());
-        if (responseView && payload.get$ref() != null) {
-            payload = new Schema<>().$ref(payload.get$ref() + ".Response");
-        }
         ObjectSchema envelope = new ObjectSchema();
         envelope.addProperty("code", new IntegerSchema().description("业务码；200表示调用成功，仍需检查逐项结果"));
         envelope.addProperty("msg", new StringSchema().description("对外消息，不能作为稳定的程序分支键"));
         envelope.setRequired(List.of("code", "msg"));
+        if (api.shape() == CoreApi.Shape.DATA && (api.response() == Void.class || api.response() == void.class)) {
+            return envelope;
+        }
+        Schema payload = resolve(api.response());
+        if (responseView && payload.get$ref() != null) {
+            payload = new Schema<>().$ref(payload.get$ref() + ".Response");
+        }
         if (api.shape() == CoreApi.Shape.PAGE) {
             envelope.addProperty("rows", new ArraySchema().items(payload));
             envelope.addProperty("total", new IntegerSchema().format("int64").description("符合相同服务端筛选的总记录数"));

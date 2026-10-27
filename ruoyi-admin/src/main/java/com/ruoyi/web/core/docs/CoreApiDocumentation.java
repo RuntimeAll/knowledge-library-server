@@ -5,6 +5,7 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.examples.Example;
 import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.BooleanSchema;
 import io.swagger.v3.oas.models.media.IntegerSchema;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.ObjectSchema;
@@ -36,19 +37,27 @@ import org.springframework.web.multipart.MultipartFile;
 public final class CoreApiDocumentation implements OperationCustomizer, OpenApiCustomizer {
     private static final Map<String, String> TAGS = Map.of(
             "asset", "01 文件资产", "source", "02 来源资料", "question", "03 题目与知识内容",
-            "product", "04 成品归档", "reference", "05 分类与参数支撑");
+            "product", "04 成品归档", "reference", "05 分类与参数支撑",
+            "review", "06 题目审核", "rendering", "07 模板生成");
     private final CoreApiContracts contracts;
+    private final boolean published;
     private final CoreApiSchemas schemas = new CoreApiSchemas();
     private final CoreApiSchemas responseSchemas = new CoreApiSchemas(true);
 
     public CoreApiDocumentation(CoreApiContracts contracts) {
+        this(contracts, true);
+    }
+
+    /** Internal selection is used only by isolated exports, never a runtime documentation route. */
+    public CoreApiDocumentation(CoreApiContracts contracts, boolean published) {
         this.contracts = contracts;
+        this.published = published;
     }
 
     @Override
     public Operation customize(Operation operation, HandlerMethod handler) {
         CoreApi api = handler.getMethodAnnotation(CoreApi.class);
-        if (api == null || !api.published()) {
+        if (api == null || api.published() != published) {
             return operation;
         }
         CoreApiContracts.Contract contract = contracts.require(api.value());
@@ -93,18 +102,20 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
                                 .schema(schemas.resolve(parameter.getParameterizedType())).example(contract.requestExample()))));
             } else if (path != null) {
                 String name = name(path.name(), path.value(), parameter.getName());
-                parameters.add(parameter(name, "path", true, scalar(parameter.getType(), name), contract));
+                parameters.add(parameter(name, "path", true, scalar(parameter.getParameterizedType(), name), contract));
             } else if (query != null) {
                 String name = name(query.name(), query.value(), parameter.getName());
                 boolean file = MultipartFile.class.isAssignableFrom(parameter.getType());
                 hasFile |= file;
-                Schema shape = file ? new StringSchema().format("binary") : scalar(parameter.getType(), name);
+                Schema shape = scalar(parameter.getParameterizedType(), name);
+                boolean required = query.required()
+                        && org.springframework.web.bind.annotation.ValueConstants.DEFAULT_NONE.equals(query.defaultValue());
                 multipart.addProperty(name, shape.description(explanation(contract, name)));
-                if (query.required()) {
+                if (required) {
                     requiredParts.add(name);
                 }
                 if (!file) {
-                    parameters.add(parameter(name, "query", query.required(), shape, contract));
+                    parameters.add(parameter(name, "query", required, shape, contract));
                 }
             } else if (api.queryFields().length > 0 && parameter.getType().getName().startsWith("com.ruoyi.")) {
                 queryFields(parameters, parameter.getType(), api.queryFields(), contract);
@@ -117,21 +128,36 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
                     .content(new Content().addMediaType("multipart/form-data", new MediaType().schema(multipart).example(contract.requestExample()))));
         }
         if (api.shape() == CoreApi.Shape.PAGE) {
-            parameters.add(parameter("pageNum", "query", false, new IntegerSchema()._default(1), contract));
-            parameters.add(parameter("pageSize", "query", false, new IntegerSchema()._default(10), contract));
-            parameters.add(parameter("orderByColumn", "query", false, new StringSchema(), contract));
-            parameters.add(parameter("isAsc", "query", false, new StringSchema(), contract));
-            parameters.add(parameter("reasonable", "query", false, new Schema<Boolean>().type("boolean")._default(true), contract));
+            addPaginationParameter(parameters, parameter("pageNum", "query", false, new IntegerSchema()._default(1), contract));
+            addPaginationParameter(parameters, parameter("pageSize", "query", false, new IntegerSchema()._default(10), contract));
+            addPaginationParameter(parameters, parameter("orderByColumn", "query", false, new StringSchema(), contract));
+            addPaginationParameter(parameters, parameter("isAsc", "query", false, new StringSchema(), contract));
+            boolean reasonable = !Set.of("question.list", "reference.materialCandidates").contains(api.value());
+            addPaginationParameter(parameters, parameter("reasonable", "query", false, new BooleanSchema()._default(reasonable), contract));
         }
         operation.setParameters(parameters.isEmpty() ? null : parameters);
+    }
+
+    private static void addPaginationParameter(List<Parameter> parameters, Parameter fallback) {
+        Parameter existing = parameters.stream().filter(value -> fallback.getName().equals(value.getName())
+                && fallback.getIn().equals(value.getIn())).findFirst().orElse(null);
+        if (existing == null) {
+            parameters.add(fallback);
+        } else {
+            if (existing.getSchema() == null) { existing.setSchema(fallback.getSchema()); }
+            if (existing.getDescription() == null || existing.getDescription().isBlank())
+                { existing.setDescription(fallback.getDescription()); }
+        }
     }
 
     private void queryFields(List<Parameter> parameters, Class<?> type, String[] allowed,
             CoreApiContracts.Contract contract) {
         try {
-            Map<String, Class<?>> types = new LinkedHashMap<>();
+            Map<String, java.lang.reflect.Type> types = new LinkedHashMap<>();
             for (var property : Introspector.getBeanInfo(type).getPropertyDescriptors()) {
-                types.put(property.getName(), property.getPropertyType());
+                if (property.getReadMethod() != null) {
+                    types.put(property.getName(), property.getReadMethod().getGenericReturnType());
+                }
             }
             for (String field : allowed) {
                 if (!types.containsKey(field)) {
@@ -166,9 +192,11 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
         } else {
             Schema success = responseSchemas.response(api);
             success.addProperty("code", new IntegerSchema()._enum(List.of(200)));
-            Schema envelope = new Schema<>().oneOf(List.of(success, error));
+            boolean hasSuccess = contract.successExample() instanceof Map<?, ?> example
+                    && example.get("code") instanceof Number code && code.intValue() == 200;
+            Schema envelope = hasSuccess ? new Schema<>().oneOf(List.of(success, error)) : error;
             content.addMediaType("application/json", new MediaType().schema(envelope)
-                    .addExamples("success", new Example().value(contract.successExample()))
+                    .addExamples(hasSuccess ? "success" : "businessRefusal", new Example().value(contract.successExample()))
                     .addExamples("businessFailure", new Example().value(contract.failureExample())));
         }
         operation.setResponses(new ApiResponses().addApiResponse("200", new ApiResponse()
@@ -213,7 +241,17 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
         node.forEach(child -> references(child, result));
     }
 
-    private static Schema scalar(Class<?> type, String name) {
+    private static Schema scalar(java.lang.reflect.Type type, String name) {
+        if (type instanceof Class<?> array && array.isArray()) {
+            return new io.swagger.v3.oas.models.media.ArraySchema().items(scalar(array.getComponentType(), name));
+        }
+        if (type instanceof java.lang.reflect.ParameterizedType collection
+                && collection.getRawType() instanceof Class<?> raw && java.util.Collection.class.isAssignableFrom(raw)) {
+            return new io.swagger.v3.oas.models.media.ArraySchema().items(scalar(collection.getActualTypeArguments()[0], name));
+        }
+        if (type == MultipartFile.class) {
+            return new StringSchema().format("binary");
+        }
         if (type == Long.class || type == long.class) {
             return new StringSchema();
         }
@@ -221,7 +259,7 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
             return new IntegerSchema();
         }
         if (type == Boolean.class || type == boolean.class) {
-            return new Schema<Boolean>().type("boolean");
+            return new BooleanSchema();
         }
         return new StringSchema();
     }

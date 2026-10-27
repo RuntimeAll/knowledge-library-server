@@ -5,7 +5,49 @@ import com.ruoyi.common.core.domain.BaseEntity;
 import java.util.List;
 
 /** 公共题目与当前正文版本，业务主键独立于导入批次。 */
-public class KbQuestion extends BaseEntity {
+public class KbQuestion extends BaseEntity implements com.ruoyi.knowledge.review.KbQualityImpact {
+    private java.util.List<String> affectedQuestionIds = java.util.List.of();
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public java.util.List<String> getAffectedQuestionIds() { return affectedQuestionIds; }
+    public void setAffectedQuestionIds(java.util.List<String> value) { affectedQuestionIds = value; }
+
+    private String contentHash;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public String getContentHash() { return contentHash; }
+    public void setContentHash(String value) { contentHash = value; }
+    private com.ruoyi.knowledge.review.ReviewModels.ParentFreeze reviewParentFreeze;
+    private String expectedParentContentHash;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public com.ruoyi.knowledge.review.ReviewModels.ParentFreeze getReviewParentFreeze() { return reviewParentFreeze; }
+    public void setReviewParentFreeze(com.ruoyi.knowledge.review.ReviewModels.ParentFreeze value) { reviewParentFreeze = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getExpectedParentContentHash() { return expectedParentContentHash; }
+    public void setExpectedParentContentHash(String value) { expectedParentContentHash = value; }
+    private Long expectedParentRowVersion;
+    private String expectedParentStemHash;
+    private String granularityExceptionId;
+    private String importClientKey;
+    private String candidateArticleHash;
+    private Long importSourceId;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public Long getExpectedParentRowVersion() { return expectedParentRowVersion; }
+    public void setExpectedParentRowVersion(Long value) { expectedParentRowVersion = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getExpectedParentStemHash() { return expectedParentStemHash; }
+    public void setExpectedParentStemHash(String value) { expectedParentStemHash = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getGranularityExceptionId() { return granularityExceptionId; }
+    public void setGranularityExceptionId(String value) { granularityExceptionId = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getImportClientKey() { return importClientKey; }
+    public void setImportClientKey(String value) { importClientKey = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getCandidateArticleHash() { return candidateArticleHash; }
+    public void setCandidateArticleHash(String value) { candidateArticleHash = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public Long getImportSourceId() { return importSourceId; }
+    public void setImportSourceId(Long value) { importSourceId = value; }
     private Long id;
     private Long rowVersion;
     private String title;

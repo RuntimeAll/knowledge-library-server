@@ -6,7 +6,12 @@ import java.math.BigDecimal;
 import java.util.Date;
 
 /** 题目在来源中的实际出现事实和核实证据。 */
-public class KbOccurrence extends BaseEntity {
+public class KbOccurrence extends BaseEntity implements com.ruoyi.knowledge.review.KbQualityImpact {
+    private java.util.List<String> affectedQuestionIds = java.util.List.of();
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public java.util.List<String> getAffectedQuestionIds() { return affectedQuestionIds; }
+    public void setAffectedQuestionIds(java.util.List<String> value) { affectedQuestionIds = value; }
+
     private Long id;
     private Long rowVersion;
     private Long questionId;

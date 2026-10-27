@@ -25,7 +25,7 @@ class KnowledgeMapperContractTest {
         configuration = new Configuration();
         for (String name :
                 List.of(
-                        "Question",
+                        "Review", "Question",
                         "Kp",
                         "Source",
                         "Occurrence",

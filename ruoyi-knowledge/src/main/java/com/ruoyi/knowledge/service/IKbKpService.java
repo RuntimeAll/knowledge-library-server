@@ -10,6 +10,7 @@ public interface IKbKpService {
     List<KbKp> list(KbKp query);
 
     KbKp get(Long id);
+    List<KbKp> getMany(List<Long> ids);
 
     List<KbKpName> names(List<Long> ids);
 

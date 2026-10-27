@@ -51,6 +51,7 @@ public class KbMaterialController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:material:add')")
     @Log(title = "专项资料", businessType = BusinessType.INSERT)
     @PostMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialCreate", response = com.ruoyi.knowledge.domain.KbMaterial.class, published = false)
     public AjaxResult create(@RequestBody KbMaterial data) {
         data.setCreateBy(getUsername());
         return success(service.create(data));
@@ -59,6 +60,7 @@ public class KbMaterialController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:material:edit')")
     @Log(title = "专项资料", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialUpdate", response = com.ruoyi.knowledge.domain.KbMaterial.class, published = false)
     public AjaxResult update(@RequestBody KbMaterial data) {
         data.setUpdateBy(getUsername());
         return success(service.update(data));
@@ -67,6 +69,7 @@ public class KbMaterialController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:material:remove')")
     @Log(title = "专项资料", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialDelete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();
@@ -74,17 +77,20 @@ public class KbMaterialController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:material:query')")
     @GetMapping("/{id}/candidates")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialCandidates", response = com.ruoyi.knowledge.domain.KbQuestion.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"pageNum", "pageSize", "purpose", "ids", "title", "query", "matchMode", "kpId", "expand", "hasImage", "status", "subject", "contentKind", "questionType", "difficulty", "creationKind", "sourceId", "verifiedOnly", "wrongOnly", "wrongSourceId", "examSourceId", "outlineId", "outlineNodeId"})
     public TableDataInfo candidates(
             @PathVariable Long id,
             @RequestParam(defaultValue = "REFERENCE") String scope,
             KbQuestionQuery query) {
+        query.validatePage();
         service.prepareCandidates(id, scope, query);
-        startPage();
-        return getDataTable(questionService.list(query));
+        com.github.pagehelper.PageHelper.startPage(query.getPageNum(), query.getPageSize()).setReasonable(false);
+        try { return getDataTable(questionService.list(query)); } finally { com.github.pagehelper.PageHelper.clearPage(); }
     }
 
     @PreAuthorize("@ss.hasPermi('knowledge:material:query')")
     @GetMapping("/{id}/comparison")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialComparison", response = com.ruoyi.knowledge.dto.KbComparison.class, published = false)
     public AjaxResult comparison(
             @PathVariable Long id,
             @RequestParam(defaultValue = "REFERENCE") String scope,
@@ -110,6 +116,7 @@ public class KbMaterialController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:material:query')")
     @GetMapping("/{id}/validate")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.materialValidate", response = com.ruoyi.knowledge.domain.KbMaterial.class, published = false)
     public AjaxResult validate(@PathVariable Long id) {
         return success(service.get(id));
     }

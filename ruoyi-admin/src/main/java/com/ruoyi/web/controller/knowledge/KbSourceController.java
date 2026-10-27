@@ -51,6 +51,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:add')")
     @Log(title = "来源资料", businessType = BusinessType.INSERT)
     @PostMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.create", response = com.ruoyi.knowledge.domain.KbSource.class, published = false)
     public AjaxResult create(@RequestBody KbSource data) {
         data.setCreateBy(getUsername());
         return success(service.create(data));
@@ -59,6 +60,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
     @Log(title = "来源资料", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.update", response = com.ruoyi.knowledge.domain.KbSource.class, published = false)
     public AjaxResult update(@RequestBody KbSource data) {
         data.setUpdateBy(getUsername());
         return success(service.update(data));
@@ -67,6 +69,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:remove')")
     @Log(title = "来源资料", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.delete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();
@@ -74,6 +77,7 @@ public class KbSourceController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:source:query')")
     @GetMapping("/{id}/occurrences")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.occurrences", response = com.ruoyi.knowledge.domain.KbOccurrence.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.ARRAY)
     public AjaxResult occurrences(@PathVariable Long id) {
         return success(service.occurrences(null, id));
     }
@@ -81,6 +85,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
     @Log(title = "题目出处", businessType = BusinessType.INSERT)
     @PostMapping("/occurrence")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.createOccurrence", response = com.ruoyi.knowledge.domain.KbOccurrence.class, published = false)
     public AjaxResult addOccurrence(@RequestBody KbOccurrence data) {
         data.setCreateBy(getUsername());
         return success(service.createOccurrence(data));
@@ -89,6 +94,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
     @Log(title = "题目出处", businessType = BusinessType.UPDATE)
     @PutMapping("/occurrence")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.updateOccurrence", response = com.ruoyi.knowledge.domain.KbOccurrence.class, published = false)
     public AjaxResult editOccurrence(@RequestBody KbOccurrence data) {
         data.setUpdateBy(getUsername());
         return success(service.updateOccurrence(data));
@@ -97,6 +103,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
     @Log(title = "题目出处", businessType = BusinessType.DELETE)
     @DeleteMapping("/occurrence/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.deleteOccurrence", response = Void.class, published = false)
     public AjaxResult deleteOccurrence(@PathVariable Long id) {
         service.deleteOccurrence(id);
         return success();
@@ -105,6 +112,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:edit')")
     @Log(title = "资料描述", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/catalog")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.updateCatalog", response = com.ruoyi.knowledge.domain.KbSource.class, published = false)
     public AjaxResult catalog(
             @PathVariable Long id,
             @RequestBody com.ruoyi.knowledge.catalog.KbCatalogCommand command) {
@@ -114,6 +122,7 @@ public class KbSourceController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:source:verify')")
     @Log(title = "考试来源核实", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/exam-verification")
+    @com.ruoyi.web.core.docs.CoreApi(value = "source.verifyExam", response = com.ruoyi.knowledge.domain.KbSource.class, published = false)
     public AjaxResult verifyExam(
             @PathVariable Long id,
             @RequestBody com.ruoyi.knowledge.catalog.KbExamVerificationCommand command) {

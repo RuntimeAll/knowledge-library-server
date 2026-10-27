@@ -35,6 +35,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
     private final IKbAssetService assets;
     private final KbKpMapper points;
     private final IKbSourceService sources;
+    private final com.ruoyi.knowledge.review.KbReviewService reviews;
 
     public KbRenderServiceImpl(
             KbLayoutMapper mapper,
@@ -49,7 +50,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
             KbKpMapper points,
             IKbSourceService sources,
             KbProductMapper products,
-            IKbProductService productService) {
+            IKbProductService productService, com.ruoyi.knowledge.review.KbReviewService reviews) {
         this.mapper = mapper;
         this.experiences = experiences;
         this.questions = questions;
@@ -63,6 +64,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
         this.sources = sources;
         this.products = products;
         this.productService = productService;
+        this.reviews = reviews;
     }
 
     private record Prepared(
@@ -72,6 +74,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
             List<KbRenderItem> items,
             List<KbLayoutAsset> assets) {}
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public KbRenderValidation validate(KbRenderRequest request) {
         var p = prepare(request);
@@ -90,6 +93,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
         return v;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public KbRenderJob submit(KbRenderRequest request) {
         String key = text(request.getIdempotencyKey(), "幂等键", 128);
@@ -227,11 +231,13 @@ public class KbRenderServiceImpl implements IKbRenderService {
         for (Long id : questionIds) found(questionMapper.lockById(id));
         if (!lockedSources.containsAll(mapper.questionSourceIds(questionIds)))
             throw new ServiceException("冻结题单期间新增了出处，请按原请求重试", 409);
-        Map<Long, KbQuestion> loaded = new HashMap<>();
-        Map<Long, List<KbOccurrence>> occurred = new HashMap<>();
+        reviews.assertUsable(questionIds);
+        var approvalEvidence=reviews.freezeApprovals(questionIds);
+        Map<Long, KbQuestion> loaded = questions.getMany(questionIds).stream().collect(java.util.stream.Collectors.toMap(KbQuestion::getId, q -> q));
+        Map<Long, List<KbOccurrence>> occurred = occurrences.forQuestions(questionIds).stream().collect(java.util.stream.Collectors.groupingBy(KbOccurrence::getQuestionId));
         String subject = null;
         for (var ref : refs) {
-            var q = loaded.computeIfAbsent(ref.getQuestionId(), questions::get);
+            var q = found(loaded.get(ref.getQuestionId()));
             version(ref.getQuestionRowVersion(), q.getRowVersion());
             if (!"READY".equals(q.getStatus()))
                 throw new ServiceException("题目 " + q.getId() + " 尚未就绪", 400);
@@ -241,11 +247,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
             ref.setStemHash(q.getStemHash());
             ref.setQuestionTitle(q.getTitle());
             kpIds.addAll(KbLayoutProtocol.list(q.getKpIds()));
-            if (!occurred.containsKey(q.getId())) {
-                var filter = new KbOccurrence();
-                filter.setQuestionId(q.getId());
-                occurred.put(q.getId(), occurrences.selectList(filter));
-            }
+            occurred.putIfAbsent(q.getId(), List.of());
             occurred.get(q.getId()).stream().map(KbOccurrence::getSourceId).forEach(sourceIds::add);
         }
         if (material != null)
@@ -277,6 +279,7 @@ public class KbRenderServiceImpl implements IKbRenderService {
         product.setReferenceSources(sourceRefs);
         catalog.prepareProduct(product, null);
         r.setOutlineScopes(product.getOutlineScopes());
+        Map<Long,KbKp> pointSnapshots=kpIds.isEmpty() ? Map.of() : points.selectByIds(new ArrayList<>(kpIds)).stream().collect(java.util.stream.Collectors.toMap(KbKp::getId,p->p));
         Map<Long, KbSource> sourceSnapshots = new HashMap<>();
         for (Long id : sourceIds) sourceSnapshots.put(id, sources.get(id));
         for (var ref : sourceRefs)
@@ -295,10 +298,11 @@ public class KbRenderServiceImpl implements IKbRenderService {
                     addAsset(taskAssets, "question:" + id, id, "QUESTION_IMAGE");
                 var snapshot = new KbRenderQuestionSnapshot();
                 snapshot.setQuestion(q);
+                snapshot.setApprovalEvidence(approvalEvidence.get(q.getId()));
                 snapshot.setOccurrences(occurred.get(q.getId()));
                 snapshot.setKnowledgePoints(
                         KbLayoutProtocol.list(q.getKpIds()).stream()
-                                .map(points::selectById)
+                                .map(pointSnapshots::get)
                                 .toList());
                 snapshot.setSources(
                         occurred.get(q.getId()).stream()
@@ -374,8 +378,12 @@ public class KbRenderServiceImpl implements IKbRenderService {
     }
 
     public List<KbRenderJob> list(KbRenderJob query) {
-        if (!SecurityUtils.isAdmin(SecurityUtils.getUserId()))
-            query.setActorUserId(SecurityUtils.getUserId());
+        Long actor = SecurityUtils.getUserId();
+        if (query.getIdempotencyKey() != null) {
+            query.setIdempotencyKey(text(query.getIdempotencyKey(), "幂等键", 128));
+            // Reconciliation never lets even an administrator substitute another submitter.
+            query.setActorUserId(actor);
+        } else if (!SecurityUtils.isAdmin(actor)) { query.setActorUserId(actor); }
         return mapper.jobs(query);
     }
 

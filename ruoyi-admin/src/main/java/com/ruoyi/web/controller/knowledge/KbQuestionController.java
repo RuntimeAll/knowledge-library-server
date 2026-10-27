@@ -33,11 +33,12 @@ public class KbQuestionController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:list')")
     @GetMapping("/list")
-    @com.ruoyi.web.core.docs.CoreApi(value = "question.list", response = com.ruoyi.knowledge.domain.KbQuestion.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"title", "query", "matchMode", "kpId", "expand", "hasImage", "status", "subject", "contentKind", "layoutMode", "unitKind", "paginationMode", "outlineId", "outlineNodeId", "questionType", "difficulty", "creationKind", "sourceId", "verifiedOnly", "wrongOnly", "wrongSourceId", "examSourceId", "examPurpose", "examYear", "examRegionCode", "examRegionDescendants"})
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.list", response = com.ruoyi.knowledge.domain.KbQuestion.class, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"purpose", "ids", "pageNum", "pageSize", "title", "query", "matchMode", "kpId", "expand", "hasImage", "status", "subject", "contentKind", "layoutMode", "unitKind", "paginationMode", "outlineId", "outlineNodeId", "questionType", "difficulty", "creationKind", "sourceId", "verifiedOnly", "wrongOnly", "wrongSourceId", "examSourceId", "examPurpose", "examYear", "examRegionCode", "examRegionDescendants"})
     public TableDataInfo list(KbQuestionQuery query) {
+        query.validatePage();
         service.prepareQuery(query);
-        startPage();
-        return getDataTable(service.list(query));
+        com.github.pagehelper.PageHelper.startPage(query.getPageNum(), query.getPageSize()).setReasonable(false);
+        try { return getDataTable(service.list(query)); } finally { com.github.pagehelper.PageHelper.clearPage(); }
     }
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:query')")
@@ -50,6 +51,7 @@ public class KbQuestionController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:question:edit')")
     @Log(title = "题库", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.updateMetadata", response = com.ruoyi.knowledge.domain.KbQuestion.class, published = false)
     public AjaxResult update(@RequestBody KbQuestion data) {
         data.setUpdateBy(getUsername());
         return success(service.updateMetadata(data));
@@ -58,6 +60,7 @@ public class KbQuestionController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:question:remove')")
     @Log(title = "题库", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.deleteLegacy", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();
@@ -65,12 +68,14 @@ public class KbQuestionController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:query')")
     @GetMapping("/{id}/occurrences")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.occurrences", response = com.ruoyi.knowledge.domain.KbOccurrence.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.ARRAY)
     public AjaxResult occurrences(@PathVariable Long id) {
         return success(sourceService.occurrences(id, null));
     }
 
     @PreAuthorize("@ss.hasPermi('knowledge:question:query')")
     @GetMapping("/{id}/lineage")
+    @com.ruoyi.web.core.docs.CoreApi(value = "question.lineage", response = com.ruoyi.knowledge.dto.KbLineage.class, published = false)
     public AjaxResult lineage(@PathVariable Long id) {
         return success(service.lineage(id));
     }

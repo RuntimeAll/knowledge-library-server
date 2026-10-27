@@ -16,6 +16,7 @@
         <result property="remark" column="remark"/>
     </resultMap>
     <select id="selectById" resultMap="result">SELECT * FROM kb_kp WHERE id=#{id}</select>
+    <select id="selectByIds" resultMap="result">SELECT * FROM kb_kp WHERE id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY id</select>
     <select id="selectNames" resultType="com.ruoyi.knowledge.dto.KbKpName">
         SELECT id,name FROM kb_kp WHERE id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>

@@ -27,6 +27,7 @@ public interface KbQuestionMapper {
     List<KbQuestionKp> selectKpsForQuestions(@Param("ids") List<Long> ids);
 
     List<Long> selectAssetIds(Long id);
+    List<com.ruoyi.knowledge.review.ReviewModels.QuestionAsset> selectAssetsForQuestions(@Param("ids") List<Long> ids);
 
     int deleteKps(Long id);
 
@@ -46,6 +47,7 @@ public interface KbQuestionMapper {
     int insertDerivation(KbDerivation derivation);
 
     List<KbDerivation> selectParents(Long id);
+    List<KbDerivation> parentsForQuestions(@Param("ids") List<Long> ids);
 
     List<KbDerivation> selectChildren(Long id);
 }

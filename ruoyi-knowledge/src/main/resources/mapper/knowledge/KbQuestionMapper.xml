@@ -45,6 +45,8 @@
               AND exam_qs.match_status='VERIFIED' AND exam_qs.matched_stem_hash=kb_question.stem_hash
         ) AS is_real_exam FROM kb_question
         <where>
+            <if test="purpose == 'NORMAL'">AND <include refid="com.ruoyi.knowledge.mapper.KbReviewMapper.eligible"/></if>
+            <if test="ids != null">AND kb_question.id IN <foreach collection="ids" item="qid" open="(" close=")" separator=",">#{qid}</foreach></if>
             <if test="title != null and title != ''">AND title LIKE CONCAT('%', #{title}, '%')</if>
             <if test="query != null and query != ''">
                 <choose>
@@ -109,6 +111,7 @@
         WHERE question_id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
         ORDER BY question_id,kp_id
     </select>
+    <select id="selectAssetsForQuestions" resultType="com.ruoyi.knowledge.review.ReviewModels$QuestionAsset">SELECT question_id,asset_id FROM kb_question_asset WHERE question_id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY question_id,asset_id</select>
     <select id="selectAssetIds" resultType="long">SELECT asset_id FROM kb_question_asset WHERE question_id=#{id} ORDER BY asset_id</select>
     <delete id="deleteKps">DELETE FROM kb_question_kp WHERE question_id=#{id}</delete>
     <delete id="deleteAssets">DELETE FROM kb_question_asset WHERE question_id=#{id}</delete>
@@ -134,6 +137,7 @@
         <result property="childTitle" column="child_title"/>
     </resultMap>
     <select id="selectParents" resultMap="derivation">SELECT d.*,q.title AS parent_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.parent_question_id WHERE child_question_id=#{id} ORDER BY is_primary DESC,parent_question_id</select>
+    <select id="parentsForQuestions" resultMap="derivation">SELECT d.*,q.title AS parent_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.parent_question_id WHERE child_question_id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY child_question_id,is_primary DESC,parent_question_id</select>
     <select id="selectChildren" resultMap="derivation">SELECT d.*,q.title AS child_title FROM kb_question_derivation d JOIN kb_question q ON q.id=d.child_question_id WHERE parent_question_id=#{id} ORDER BY child_question_id</select>
     <select id="examRegionCodes" resultType="string">WITH RECURSIVE region_tree AS (SELECT region_code FROM kb_region WHERE region_code=#{code} OR (#{code} IN ('CN','00000000') AND region_code IN ('CN','00000000')) UNION ALL SELECT r.region_code FROM kb_region r JOIN region_tree t ON r.parent_code=t.region_code) SELECT DISTINCT region_code FROM region_tree</select>
 </mapper>

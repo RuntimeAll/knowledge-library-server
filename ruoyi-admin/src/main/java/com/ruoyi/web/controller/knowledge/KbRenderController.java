@@ -29,6 +29,7 @@ public class KbRenderController extends BaseController {
 
     @PostMapping("/validate")
     @PreAuthorize("@ss.hasPermi('knowledge:render:add')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.validate", response = com.ruoyi.knowledge.layout.KbRenderValidation.class, published = false)
     public AjaxResult validate(@RequestBody KbRenderRequest request) {
         return success(service.validate(request));
     }
@@ -36,12 +37,14 @@ public class KbRenderController extends BaseController {
     @PostMapping("/jobs")
     @PreAuthorize("@ss.hasPermi('knowledge:render:add')")
     @Log(title = "模板生成", businessType = BusinessType.INSERT)
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.submit", response = com.ruoyi.knowledge.layout.KbRenderJob.class, published = false)
     public AjaxResult submit(@RequestBody KbRenderRequest request) {
         return success(service.submit(request));
     }
 
     @GetMapping("/jobs")
     @PreAuthorize("@ss.hasPermi('knowledge:render:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.list", response = com.ruoyi.knowledge.layout.KbRenderJob.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.PAGE, queryFields = {"status", "materialId", "idempotencyKey"})
     public TableDataInfo list(KbRenderJob query) {
         startPage();
         return getDataTable(service.list(query));
@@ -49,6 +52,7 @@ public class KbRenderController extends BaseController {
 
     @GetMapping("/jobs/{id}")
     @PreAuthorize("@ss.hasPermi('knowledge:render:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.get", response = com.ruoyi.knowledge.layout.KbRenderJob.class, published = false)
     public AjaxResult get(@PathVariable Long id) {
         return success(service.get(id));
     }
@@ -56,6 +60,7 @@ public class KbRenderController extends BaseController {
     @PostMapping("/jobs/{id}/retry")
     @PreAuthorize("@ss.hasPermi('knowledge:render:retry')")
     @Log(title = "生成重试", businessType = BusinessType.UPDATE)
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.retry", response = com.ruoyi.knowledge.layout.KbRenderJob.class, published = false)
     public AjaxResult retry(@PathVariable Long id) {
         return success(service.retry(id));
     }
@@ -63,6 +68,7 @@ public class KbRenderController extends BaseController {
     @DeleteMapping("/jobs/{id}")
     @PreAuthorize("@ss.hasPermi('knowledge:experience:remove')")
     @Log(title = "生成任务", businessType = BusinessType.DELETE)
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.delete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long id) {
         service.delete(id);
         return success();
@@ -70,6 +76,7 @@ public class KbRenderController extends BaseController {
 
     @GetMapping("/jobs/{id}/outputs/{outputKey}")
     @PreAuthorize("@ss.hasPermi('knowledge:render:download')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "rendering.download", response = byte[].class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.BINARY, mediaType = "application/octet-stream")
     public void download(
             @PathVariable Long id,
             @PathVariable String outputKey,

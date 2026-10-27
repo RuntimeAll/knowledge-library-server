@@ -14,7 +14,14 @@ public record KbRecordsRequest(String schemaVersion, String idempotencyKey, Long
 
     public record Record(String clientKey, String intent, Long questionId, Long rowVersion, Long parentId,
                          HtmlMetadata metadata, String stem, String stemHtml, String answer, String answerHtml,
-                         String analysis, String analysisHtml, Integer columns, List<Item> items, List<Option> options) {
+                         String analysis, String analysisHtml, Integer columns, List<Item> items, List<Option> options,
+                         Long expectedParentRowVersion, String expectedParentStemHash, String granularityExceptionId, String expectedParentContentHash) {
+        public Record(String clientKey, String intent, Long questionId, Long rowVersion, Long parentId,
+                HtmlMetadata metadata, String stem, String stemHtml, String answer, String answerHtml,
+                String analysis, String analysisHtml, Integer columns, List<Item> items, List<Option> options) {
+            this(clientKey,intent,questionId,rowVersion,parentId,metadata,stem,stemHtml,answer,answerHtml,
+                    analysis,analysisHtml,columns,items,options,null,null,null,null);
+        }
         @JsonAnySetter public void unknown(String name, Object value) { reject(name); }
     }
     public record Item(String key, String stem, String stemHtml, String answer, String answerHtml,

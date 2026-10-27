@@ -9,6 +9,8 @@
     <artifactId>ruoyi-knowledge</artifactId>
     <description>知识库业务模块</description>
     <dependencies>
+        <dependency><groupId>com.mysql</groupId><artifactId>mysql-connector-j</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aspectj</artifactId></dependency>
         <dependency>
             <groupId>com.ruoyi</groupId>
             <artifactId>ruoyi-common</artifactId>

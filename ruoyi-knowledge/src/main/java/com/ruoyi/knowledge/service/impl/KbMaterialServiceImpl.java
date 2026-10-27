@@ -43,6 +43,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
     private final IKbSourceService sourceService;
     private final IKbKpService points;
     private final KnowledgeDictionary dictionary;
+    private final com.ruoyi.knowledge.review.KbReviewService reviews;
 
     public KbMaterialServiceImpl(
             KbMaterialMapper mapper,
@@ -50,7 +51,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
             IKbQuestionService questions,
             KbSourceMapper sources,
             IKbSourceService sourceService,
-            IKbKpService points, KnowledgeDictionary dictionary) {
+            IKbKpService points, KnowledgeDictionary dictionary, com.ruoyi.knowledge.review.KbReviewService reviews) {
         this.mapper = mapper;
         this.questionMapper = questionMapper;
         this.questions = questions;
@@ -58,22 +59,27 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
         this.sourceService = sourceService;
         this.points = points;
         this.dictionary = dictionary;
+        this.reviews = reviews;
     }
 
     public List<KbMaterial> list(KbMaterial query) {
         return mapper.selectList(query);
     }
 
+    @com.ruoyi.knowledge.review.KbQualityRead
+    @Transactional(readOnly = true)
     public KbMaterial get(Long id) {
         KbMaterial data = found(mapper.selectById(id));
         data.setQuestionIds(mapper.selectQuestionIds(id));
         data.setReferenceSources(mapper.selectReferences(id));
-        data.setQuestions(data.getQuestionIds().stream().map(questions::get).toList());
+        data.setQuestions(questions.getMany(data.getQuestionIds()));
         data.setQuestionCount(data.getQuestionIds().size());
-        data.setSelectionValid(valid(data));
+        data.setUnavailableQuestionIds(reviews.unavailableIds(data.getQuestionIds()).stream().map(String::valueOf).toList());
+        data.setSelectionValid(data.getUnavailableQuestionIds().isEmpty() && valid(data));
         return data;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbMaterial create(KbMaterial data) {
         validate(data);
@@ -82,6 +88,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbMaterial update(KbMaterial data) {
         KbMaterial old = found(mapper.lockById(data.getId()));
@@ -96,6 +103,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public void delete(Long[] values) {
         for (Long id : values) {
@@ -108,15 +116,14 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
     }
 
     public void assertSelectionValid(Long id) {
-        if (!get(id).getSelectionValid()) throw new ServiceException("仅真题选题已失效，请复核出处或调整专项", 409);
+        if (!get(id).getSelectionValid()) { throw new ServiceException("专项存在未获当前批准或真实性已失效的引用，请复核题目与出处", 409); }
     }
 
     private boolean valid(KbMaterial data) {
         if (!"EXAM_ONLY".equals(data.getSelectionMode())) return true;
         List<Long> ids =
                 data.getReferenceSources().stream().map(KbMaterialReference::getSourceId).toList();
-        return data.getQuestionIds().stream()
-                .allMatch(q -> !ids.isEmpty() && mapper.realInSources(q, ids));
+        return !ids.isEmpty() && mapper.verifiedQuestionIds(data.getQuestionIds(), ids).containsAll(data.getQuestionIds());
     }
 
     private void validate(KbMaterial data) {
@@ -142,6 +149,9 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
         for (Long id : seen.stream().sorted().toList()) found(sources.lockById(id));
         for (Long id : data.getQuestionIds().stream().sorted().toList())
             found(questionMapper.lockById(id));
+        List<Long> existing = mapper.selectQuestionIds(data.getId());
+        // Existing unavailable references remain visible; only newly introduced references require current approval.
+        reviews.assertUsable(data.getQuestionIds().stream().filter(id -> !existing.contains(id)).toList());
         if (!validForWrite(data)) throw new ServiceException("选题须自身在参考范围内有当前有效的已核实真题出处", 409);
         mapper.deleteItems(data.getId());
         mapper.deleteReferences(data.getId());
@@ -178,6 +188,7 @@ public class KbMaterialServiceImpl implements IKbMaterialService {
                     material.getReferenceSources().stream()
                             .map(KbMaterialReference::getSourceId)
                             .toList());
+        query.setPurpose("NORMAL");
         query.setVerifiedOnly("EXAM_ONLY".equals(material.getSelectionMode()));
         questions.prepareQuery(query);
     }

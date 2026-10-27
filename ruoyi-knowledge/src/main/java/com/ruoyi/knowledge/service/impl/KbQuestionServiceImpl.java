@@ -5,7 +5,6 @@ import static com.ruoyi.knowledge.service.impl.KnowledgeRules.choice;
 import static com.ruoyi.knowledge.service.impl.KnowledgeRules.found;
 import static com.ruoyi.knowledge.service.impl.KnowledgeRules.ids;
 import static com.ruoyi.knowledge.service.impl.KnowledgeRules.text;
-import static com.ruoyi.knowledge.service.impl.KnowledgeRules.unreferenced;
 import static com.ruoyi.knowledge.service.impl.KnowledgeRules.version;
 
 import com.ruoyi.common.exception.ServiceException;
@@ -42,6 +41,7 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
     private final IKbAssetService assets;
     private final KbOccurrenceMapper occurrences;
     private final KnowledgeDictionary dictionary;
+    private final com.ruoyi.knowledge.review.KbReviewService reviews;
 
     public KbQuestionServiceImpl(
             KbQuestionMapper mapper,
@@ -49,13 +49,15 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
             IKbKpService kpService,
             IKbAssetService assets,
             KbOccurrenceMapper occurrences,
-            KnowledgeDictionary dictionary) {
+            KnowledgeDictionary dictionary,
+            com.ruoyi.knowledge.review.KbReviewService reviews) {
         this.mapper = mapper;
         this.points = points;
         this.kpService = kpService;
         this.assets = assets;
         this.occurrences = occurrences;
         this.dictionary = dictionary;
+        this.reviews = reviews;
     }
 
     public void prepareQuery(KbQuestionQuery query) {
@@ -89,7 +91,20 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
                                     query.getKpId(), !Boolean.FALSE.equals(query.getExpand()))));
     }
 
+    @com.ruoyi.knowledge.review.KbQualityRead
+    @Transactional(readOnly = true)
     public List<KbQuestion> list(KbQuestionQuery query) {
+        query.setPurpose(choice(query.getPurpose(), "NORMAL", "NORMAL", "MAINTENANCE"));
+        if ("NORMAL".equals(query.getPurpose())) {
+            if (query.getStatus() != null && !"READY".equals(query.getStatus()))
+                { throw new ServiceException("NORMAL用途不能筛选非正常状态", 400); }
+            query.setApprovalJson(reviews.approvalJson());
+        } else {
+            com.ruoyi.common.utils.SecurityUtils.getLoginUser();
+            if (!com.ruoyi.common.utils.SecurityUtils.hasPermi("knowledge:question:query"))
+                { throw new ServiceException("维护查询需要题目查看权限", 403); }
+            query.setApprovalJson(null);
+        }
         List<KbQuestion> page = mapper.selectList(query);
         if (page.isEmpty()) return page;
         List<Long> questionIds = page.stream().map(KbQuestion::getId).toList();
@@ -110,11 +125,38 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         return page;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityRead
+    @Transactional(readOnly = true)
+    public List<KbQuestion> getMany(List<Long> ids) {
+        if (ids == null || ids.size() > 500 || ids.stream().anyMatch(Objects::isNull)) { throw new ServiceException("题目批查最多500个有效ID", 400); }
+        if (ids.isEmpty()) { return List.of(); }
+        KbQuestionQuery query = new KbQuestionQuery();
+        query.setIds(ids.stream().distinct().toList());
+        List<KbQuestion> rows = mapper.selectList(query);
+        Map<Long, List<Long>> kpIds = mapper.selectKpsForQuestions(query.getIds()).stream().collect(Collectors.groupingBy(KbQuestionKp::getQuestionId, Collectors.mapping(KbQuestionKp::getKpId, Collectors.toList())));
+        Map<Long, List<Long>> assetIds = mapper.selectAssetsForQuestions(query.getIds()).stream().collect(Collectors.groupingBy(com.ruoyi.knowledge.review.ReviewModels.QuestionAsset::questionId, Collectors.mapping(com.ruoyi.knowledge.review.ReviewModels.QuestionAsset::assetId, Collectors.toList())));
+        Map<Long, List<KbOccurrence>> exams = occurrences.matchedExamForQuestions(query.getIds(), null).stream().collect(Collectors.groupingBy(KbOccurrence::getQuestionId));
+        Map<Long, List<KbOccurrence>> wrongs = occurrences.matchedWrongForQuestions(query.getIds(), null).stream().collect(Collectors.groupingBy(KbOccurrence::getQuestionId));
+        Map<Long, KbQuestion> byId = rows.stream().collect(Collectors.toMap(KbQuestion::getId, q -> q));
+        for (KbQuestion q : rows) {
+            normalizeLegacyContentKind(q);
+            q.setKpIds(kpIds.getOrDefault(q.getId(), List.of()));
+            q.setAssetIds(assetIds.getOrDefault(q.getId(), List.of()));
+            q.setMatchedExamOccurrences(exams.getOrDefault(q.getId(), List.of()));
+            q.setMatchedWrongOccurrences(wrongs.getOrDefault(q.getId(), List.of()));
+            q.setReadinessReasons(readiness(q));
+        }
+        return ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+    }
+
+    @com.ruoyi.knowledge.review.KbQualityRead
+    @Transactional(readOnly = true)
     public KbQuestion get(Long id) {
         KbQuestion data = found(mapper.selectById(id));
         normalizeLegacyContentKind(data);
         data.setKpIds(mapper.selectKpIds(id));
         data.setAssetIds(mapper.selectAssetIds(id));
+        data.setContentHash(reviews.contentHash(data));
         data.setIsRealExam(mapper.isRealExam(id));
         data.setReadinessReasons(readiness(data));
         data.setMatchedExamOccurrences(occurrences.matchedExam(id, null));
@@ -122,13 +164,23 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         return data;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "QUESTION")
     @Transactional
     public KbQuestion updateMetadata(KbQuestion input) {
         KbQuestion data = found(mapper.lockById(input.getId()));
         version(input.getRowVersion(), data.getRowVersion());
-        data.setKpIds(
-                input.getKpIds() == null ? mapper.selectKpIds(data.getId()) : input.getKpIds());
+        if ("DELETED".equals(data.getStatus()) || "RETIRED".equals(data.getStatus()))
+            { throw new ServiceException("删除或停用题须先显式恢复草稿", 409); }
+        if ("READY".equals(input.getStatus()) && !"READY".equals(data.getStatus()))
+            { throw new ServiceException("请使用独立批准接口，普通编辑不能设为正常", 403); }
+        data.setKpIds(mapper.selectKpIds(data.getId()));
         data.setAssetIds(mapper.selectAssetIds(data.getId()));
+        String previousContent = com.ruoyi.knowledge.review.KbQuestionFingerprint.content(data);
+        String previousRemark = data.getRemark();
+        String previousStatus = data.getStatus();
+        if (input.getStatus() != null && !Objects.equals(input.getStatus(), previousStatus))
+            { throw new ServiceException("状态变更请使用独立审核动作", 409); }
+        if (input.getKpIds() != null) { data.setKpIds(input.getKpIds()); }
         if (input.getTitle() != null) data.setTitle(input.getTitle());
         if (input.getStatus() != null) data.setStatus(input.getStatus());
         if (input.getSubject() != null) data.setSubject(input.getSubject());
@@ -149,12 +201,19 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         }
         data.setRemark(input.getRemark());
         data.setUpdateBy(input.getUpdateBy());
+        data.setStatus("DRAFT");
         validate(data);
+        if (Objects.equals(previousContent, com.ruoyi.knowledge.review.KbQuestionFingerprint.content(data))
+                && Objects.equals(previousRemark, data.getRemark())) {
+            data.setStatus(previousStatus);
+            return get(data.getId());
+        }
         changed(mapper.update(data));
         relations(data);
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbQuestion createImportedQuestion(KbQuestion data) {
         if ("DERIVED".equals(data.getCreationKind())) throw new ServiceException("变式须通过母题导入", 400);
@@ -163,6 +222,7 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
 
     private KbQuestion create(KbQuestion data, boolean derived) {
         data.setId(null);
+        data.setStatus("DRAFT");
         data.setCreationKind(
                 derived
                         ? "DERIVED"
@@ -175,15 +235,23 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         data.setKpIds(ids(data.getKpIds()));
         data.setAssetIds(ids(data.getAssetIds()));
         validate(data);
+        reviews.validateNewUnit(data);
         mapper.insert(data);
         relations(data);
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "QUESTION")
     @Transactional
     public KbQuestion updateImportedQuestion(KbQuestion input) {
         KbQuestion old = found(mapper.lockById(input.getId()));
         version(input.getRowVersion(), old.getRowVersion());
+        if ("DELETED".equals(old.getStatus()) || "RETIRED".equals(old.getStatus()))
+            { throw new ServiceException("删除或停用题须先显式恢复草稿", 409); }
+        old.setKpIds(mapper.selectKpIds(old.getId()));
+        old.setAssetIds(mapper.selectAssetIds(old.getId()));
+        String previousContent = com.ruoyi.knowledge.review.KbQuestionFingerprint.content(old);
+        String previousStatus = old.getStatus();
         if (input.getTitle() == null) input.setTitle(old.getTitle());
         if (input.getSubject() == null) input.setSubject(old.getSubject());
         if (input.getContentKind() == null) input.setContentKind(old.getContentKind());
@@ -194,16 +262,21 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         if (input.getQuestionType() == null) input.setQuestionType(old.getQuestionType());
         if (input.getDifficulty() == null) input.setDifficulty(old.getDifficulty());
         if (input.getSourceNote() == null) input.setSourceNote(old.getSourceNote());
-        if (input.getStatus() == null) input.setStatus(old.getStatus());
+        input.setStatus("DRAFT");
         if (input.getKpIds() == null) input.setKpIds(mapper.selectKpIds(old.getId()));
         if (input.getAssetIds() == null) input.setAssetIds(mapper.selectAssetIds(old.getId()));
         input.setCreationKind(old.getCreationKind());
         validate(input);
+        if (Objects.equals(previousContent, com.ruoyi.knowledge.review.KbQuestionFingerprint.content(input))) {
+            input.setStatus(previousStatus);
+            return get(input.getId());
+        }
         changed(mapper.update(input));
         relations(input);
         return get(input.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbQuestion deriveImportedQuestion(
             Long parentId,
@@ -220,7 +293,11 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         parents.add(parentId);
         parents.sort(Long::compareTo);
         for (Long id : parents) found(mapper.lockById(id));
+        reviews.assertUsable(parents);
+        var frozenParent = reviews.freezeParent(parentId, data.getExpectedParentRowVersion(),
+                data.getExpectedParentStemHash(), data.getExpectedParentContentHash());
         KbQuestion child = create(data, true);
+        child.setReviewParentFreeze(frozenParent);
         for (Long id : parents) {
             KbDerivation edge = new KbDerivation();
             edge.setParentQuestionId(id);
@@ -235,16 +312,12 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         return child;
     }
 
-    @Transactional
+    public void bindReviewImport(KbQuestion saved, KbQuestion input, String actor, String fingerprint) {
+        reviews.bindImport(saved, input, actor, fingerprint);
+    }
+
     public void delete(Long[] values) {
-        for (Long id : values) {
-            found(mapper.lockById(id));
-            unreferenced(mapper.countReferences(id), "题目仍被专项、出处或变式引用，请先解除关系");
-            mapper.deleteIncomingDerivations(id);
-            mapper.deleteKps(id);
-            mapper.deleteAssets(id);
-            mapper.deleteById(id);
-        }
+        throw new ServiceException("旧DELETE不再执行物理删除；请携当前版本调用soft-delete", 409);
     }
 
     public KbLineage lineage(Long id) {
@@ -305,7 +378,7 @@ public class KbQuestionServiceImpl implements IKbQuestionService {
         data.setStatus(
                 choice(
                         data.getStatus(),
-                        reasons.isEmpty() ? "READY" : "DRAFT",
+                        "DRAFT",
                         "DRAFT",
                         "READY",
                         "RETIRED"));

@@ -6,7 +6,12 @@ import java.util.List;
 import com.ruoyi.knowledge.dto.KbKpOutlineBinding;
 
 /** 可复用考点及嵌套、组合关系。 */
-public class KbKp extends BaseEntity {
+public class KbKp extends BaseEntity implements com.ruoyi.knowledge.review.KbQualityImpact {
+    private java.util.List<String> affectedQuestionIds = java.util.List.of();
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public java.util.List<String> getAffectedQuestionIds() { return affectedQuestionIds; }
+    public void setAffectedQuestionIds(java.util.List<String> value) { affectedQuestionIds = value; }
+
     private Long id;
     private Long rowVersion;
     private String name;

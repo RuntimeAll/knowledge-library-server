@@ -5,7 +5,12 @@ import com.ruoyi.common.core.domain.BaseEntity;
 import java.util.List;
 
 /** 教学大纲及其章节明细。 */
-public class KbOutline extends BaseEntity {
+public class KbOutline extends BaseEntity implements com.ruoyi.knowledge.review.KbQualityImpact {
+    private java.util.List<String> affectedQuestionIds = java.util.List.of();
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public java.util.List<String> getAffectedQuestionIds() { return affectedQuestionIds; }
+    public void setAffectedQuestionIds(java.util.List<String> value) { affectedQuestionIds = value; }
+
     private Long id;
     private Long rowVersion;
     private String title;

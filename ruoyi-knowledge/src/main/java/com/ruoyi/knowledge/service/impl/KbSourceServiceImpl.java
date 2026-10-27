@@ -120,6 +120,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return data;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbSource create(KbSource data) {
         catalog.prepareSource(data, null);
@@ -130,6 +131,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "SOURCE")
     @Transactional
     public KbSource update(KbSource data) {
         found(mapper.lockById(data.getId()));
@@ -154,6 +156,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public void delete(Long[] values) {
         for (Long id : values) {
@@ -175,6 +178,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return values;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "SOURCE")
     @Transactional
     public KbOccurrence createOccurrence(KbOccurrence data) {
         // A caller-supplied ID must not exclude an existing position from the
@@ -188,6 +192,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return flags(found(occurrences.selectById(data.getId())));
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "SOURCE")
     @Transactional
     public KbOccurrence updateOccurrence(KbOccurrence data) {
         found(mapper.lockById(data.getSourceId()));
@@ -202,6 +207,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return flags(found(occurrences.selectById(data.getId())));
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "OCCURRENCE")
     @Transactional
     public void deleteOccurrence(Long id) {
         KbOccurrence data = found(occurrences.selectById(id));
@@ -350,6 +356,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return data;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "SOURCE")
     @Transactional
     public KbSource catalog(Long id, KbCatalogCommand command, String actor) {
         KbSource input = new KbSource();
@@ -368,6 +375,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         to.setExamDetail(from.getExamDetail());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "SOURCE")
     @Transactional
     public KbSource verifyExam(Long id, KbExamVerificationCommand command, String actor) {
         found(mapper.lockById(id));
@@ -413,6 +421,7 @@ public class KbSourceServiceImpl implements IKbSourceService {
         return page;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "OCCURRENCE")
     @Transactional
     public KbOccurrence collections(Long id, KbCollectionsCommand command, String actor) {
         KbOccurrence before = found(occurrences.selectById(id));

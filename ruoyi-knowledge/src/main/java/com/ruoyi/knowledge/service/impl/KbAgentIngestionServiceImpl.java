@@ -43,6 +43,7 @@ public class KbAgentIngestionServiceImpl implements IKbAgentIngestionService {
         return id == null ? null : products.get(id);
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public KbSource saveSource(KbAgentSourceRequest request, String actor) {
         if (request == null || request.source() == null) throw new ServiceException("缺少来源内容", 400);
@@ -62,6 +63,7 @@ public class KbAgentIngestionServiceImpl implements IKbAgentIngestionService {
         return saved;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite
     @Transactional
     public KbProduct saveProduct(KbAgentProductRequest request, String actor) {
         if (request == null || request.product() == null) throw new ServiceException("缺少成品内容", 400);

@@ -13,6 +13,8 @@ public interface IKbQuestionService {
 
     KbQuestion get(Long id);
 
+    List<KbQuestion> getMany(List<Long> ids);
+
     KbQuestion updateMetadata(KbQuestion data);
 
     KbQuestion createImportedQuestion(KbQuestion data);
@@ -26,6 +28,8 @@ public interface IKbQuestionService {
             String operation,
             String changeNote,
             String preservedNote);
+
+    void bindReviewImport(KbQuestion saved, KbQuestion input, String actor, String fingerprint);
 
     void delete(Long[] ids);
 

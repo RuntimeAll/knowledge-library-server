@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC '-//mybatis.org//DTD Mapper 3.0//EN' 'http://mybatis.org/dtd/mybatis-3-mapper.dtd'>
+<mapper namespace="com.ruoyi.knowledge.mapper.KbReviewMapper">
+  <select id="readyIds" resultType="long">SELECT id FROM kb_question WHERE status='READY' AND id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY id</select>
+  <select id="relatedKpIds" resultType="long">SELECT from_kp_id FROM kb_kp_edge WHERE to_kp_id=#{id} UNION SELECT to_kp_id FROM kb_kp_edge WHERE from_kp_id=#{id}</select>
+  <select id="questionVersion" resultType="long">SELECT row_version FROM kb_question WHERE id=#{id}</select>
+  <select id="facts" resultType="com.ruoyi.knowledge.review.ReviewModels$Fact">
+    SELECT kind,identity,stamp FROM (
+      SELECT 'CONTENT' kind,CAST(q.id AS CHAR) identity,SHA2(CAST(JSON_ARRAY(q.title,q.stem_html,q.answer_html,q.analysis_html,q.stem_hash,q.subject,q.question_type,q.content_kind,q.difficulty,q.creation_kind,q.source_note,q.layout_mode,q.unit_kind,q.pagination_mode,q.layout_note,q.item_count,q.has_image) AS CHAR),256) stamp FROM kb_question q WHERE q.id=#{questionId}
+      UNION
+      SELECT 'KP' kind,CAST(k.id AS CHAR) identity,CAST(JSON_ARRAY(k.row_version,k.subject) AS CHAR) stamp
+      FROM kb_question_kp qk JOIN kb_kp k ON k.id=qk.kp_id WHERE qk.question_id=#{questionId}
+      UNION
+      SELECT 'OUTLINE',CAST(o.id AS CHAR),CAST(JSON_ARRAY(o.row_version,o.status,o.subject,o.catalog_kind) AS CHAR)
+      FROM kb_question_kp qk JOIN kb_kp_outline ko ON ko.kp_id=qk.kp_id JOIN kb_outline o ON o.id=ko.outline_id WHERE qk.question_id=#{questionId}
+      UNION
+      SELECT 'NODE',CONCAT(nk.kp_id,':',n.id),CAST(JSON_ARRAY(n.row_version,n.outline_id) AS CHAR)
+      FROM kb_question_kp qk JOIN kb_outline_node_kp nk ON nk.kp_id=qk.kp_id JOIN kb_outline_node n ON n.id=nk.node_id WHERE qk.question_id=#{questionId}
+      UNION
+      SELECT 'SOURCE',CAST(s.id AS CHAR),CAST(JSON_ARRAY(s.row_version,s.source_kind) AS CHAR)
+      FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id WHERE qs.question_id=#{questionId}
+      UNION
+      SELECT 'OCCURRENCE',CAST(qs.id AS CHAR),CAST(JSON_ARRAY(qs.row_version,qs.source_id,qs.match_status,qs.matched_stem_hash) AS CHAR)
+      FROM kb_question_source qs WHERE qs.question_id=#{questionId}
+      UNION
+      SELECT 'ASSET',CAST(a.asset_id AS CHAR),CAST(JSON_ARRAY(a.status,a.sha256,a.file_size) AS CHAR)
+      FROM kb_question_asset qa JOIN kb_asset a ON a.asset_id=qa.asset_id WHERE qa.question_id=#{questionId}
+      UNION
+      SELECT 'SOURCE_ASSET',CONCAT(sa.source_id,':',a.asset_id),CAST(JSON_ARRAY(a.status,a.sha256,a.file_size,sa.role) AS CHAR)
+      FROM kb_question_source qs JOIN kb_source_asset sa ON sa.source_id=qs.source_id JOIN kb_asset a ON a.asset_id=sa.asset_id WHERE qs.question_id=#{questionId}
+      UNION
+      SELECT 'EVIDENCE_ASSET',CAST(a.asset_id AS CHAR),CAST(JSON_ARRAY(a.status,a.sha256,a.file_size) AS CHAR) FROM kb_question_source qs JOIN kb_asset a ON a.asset_id=qs.evidence_asset_id WHERE qs.question_id=#{questionId}
+      UNION
+      SELECT 'PARENT',CAST(p.id AS CHAR),SHA2(CAST(JSON_ARRAY(p.title,p.stem_html,p.answer_html,p.analysis_html,p.subject,p.question_type,p.content_kind,p.creation_kind,p.source_note,p.layout_mode,p.unit_kind,p.pagination_mode,p.layout_note,d.is_primary,d.operation,d.change_note,d.preserved_note) AS CHAR),256)
+      FROM kb_question_derivation d JOIN kb_question p ON p.id=d.parent_question_id WHERE d.child_question_id=#{questionId}
+    ) f ORDER BY kind,identity,stamp
+  </select>
+  <select id="impact" resultType="com.ruoyi.knowledge.review.ReviewModels$Impact">
+    SELECT (SELECT COUNT(*) FROM kb_material_item WHERE question_id=#{questionId}) materialCount,
+      (SELECT COUNT(*) FROM kb_product_question WHERE question_id=#{questionId}) productCount,
+      (SELECT COUNT(*) FROM kb_question_derivation WHERE parent_question_id=#{questionId}) childCount
+  </select>
+  <update id="changeState">
+    UPDATE kb_question SET status=#{status},row_version=row_version+1,update_by=#{actor},update_time=NOW()
+    WHERE id=#{id} AND row_version=#{version}
+  </update>
+  <select id="validOrigin" resultType="int">
+    SELECT COUNT(*) FROM kb_question q JOIN kb_question_source qs ON qs.question_id=q.id JOIN kb_source s ON s.id=qs.source_id
+    WHERE q.id=#{id} AND (
+      (#{kind}='AUTHORED' AND s.source_kind='AUTHORED' AND COALESCE(s.origin_note,'')!='')
+      OR (#{kind}='EXTRACTED' AND qs.match_status='VERIFIED' AND qs.matched_stem_hash=q.stem_hash
+        AND (COALESCE(qs.question_no,'')!='' OR qs.page_from IS NOT NULL)
+        AND (EXISTS(SELECT 1 FROM kb_source_asset sa JOIN kb_asset a ON a.asset_id=sa.asset_id WHERE sa.source_id=s.id AND a.status='READY')
+          OR EXISTS(SELECT 1 FROM kb_asset a WHERE a.asset_id=qs.evidence_asset_id AND a.status='READY'))))
+  </select>
+  <select id="invalidBindings" resultType="int">
+    SELECT COUNT(*) FROM kb_question_kp qk JOIN kb_question q ON q.id=qk.question_id
+    WHERE q.id=#{id} AND NOT EXISTS(
+      SELECT 1 FROM kb_kp k JOIN kb_kp_outline ko ON ko.kp_id=k.id
+      JOIN kb_outline o ON o.id=ko.outline_id JOIN kb_outline_node n ON n.outline_id=o.id
+      JOIN kb_outline_node_kp nk ON nk.node_id=n.id AND nk.kp_id=k.id
+      WHERE k.id=qk.kp_id AND k.subject=q.subject AND o.subject=q.subject AND o.catalog_kind='TEXTBOOK' AND o.status='CONFIRMED')
+  </select>
+  <select id="invalidAssets" resultType="int">
+    SELECT COUNT(*) FROM kb_question_asset qa LEFT JOIN kb_asset a ON a.asset_id=qa.asset_id
+    WHERE qa.question_id=#{id} AND (a.asset_id IS NULL OR a.status!='READY')
+  </select>
+  <select id="impacted" resultType="long">
+    WITH RECURSIVE impacted(id) AS (
+      SELECT q.id FROM kb_question q WHERE
+      <choose>
+        <when test="kind == 'QUESTION'">q.id=#{id}</when>
+        <when test="kind == 'SOURCE'">EXISTS(SELECT 1 FROM kb_question_source qs WHERE qs.question_id=q.id AND qs.source_id=#{id})</when>
+        <when test="kind == 'OCCURRENCE'">EXISTS(SELECT 1 FROM kb_question_source qs WHERE qs.question_id=q.id AND qs.id=#{id})</when>
+        <when test="kind == 'KP'">EXISTS(SELECT 1 FROM kb_question_kp qk WHERE qk.question_id=q.id AND qk.kp_id=#{id})</when>
+        <when test="kind == 'NODE'">EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_outline_node_kp nk ON nk.kp_id=qk.kp_id WHERE qk.question_id=q.id AND nk.node_id=#{id})</when>
+        <when test="kind == 'OUTLINE'">EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_kp_outline ko ON ko.kp_id=qk.kp_id WHERE qk.question_id=q.id AND ko.outline_id=#{id})</when>
+        <otherwise>1=0</otherwise>
+      </choose>
+      UNION DISTINCT SELECT d.child_question_id FROM kb_question_derivation d JOIN impacted i ON i.id=d.parent_question_id
+    ) SELECT id FROM impacted ORDER BY id LIMIT #{limit}
+  </select>
+  <update id="draft">
+    UPDATE kb_question SET status='DRAFT',row_version=row_version+1,update_by=#{actor},update_time=NOW()
+    WHERE status='READY' AND id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+  </update>
+  <sql id="eligible">
+    kb_question.status='READY' AND EXISTS(
+      SELECT 1 FROM JSON_TABLE(#{approvalJson}, '$[*]' COLUMNS(
+        question_id BIGINT PATH '$.questionId' ERROR ON EMPTY ERROR ON ERROR,
+        row_version BIGINT PATH '$.rowVersion' ERROR ON EMPTY ERROR ON ERROR,
+        facts JSON PATH '$.facts' ERROR ON EMPTY ERROR ON ERROR
+      )) a WHERE a.question_id=kb_question.id AND a.row_version=kb_question.row_version
+      AND JSON_LENGTH(a.facts)=(1 + (SELECT COUNT(*) FROM kb_question_kp c WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(DISTINCT ko.outline_id) FROM kb_question_kp c JOIN kb_kp_outline ko ON ko.kp_id=c.kp_id WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(DISTINCT nk.kp_id,nk.node_id) FROM kb_question_kp c JOIN kb_outline_node_kp nk ON nk.kp_id=c.kp_id WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(DISTINCT c.source_id) FROM kb_question_source c WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(*) FROM kb_question_source c WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(*) FROM kb_question_asset c WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(DISTINCT sa.source_id,sa.asset_id,sa.role) FROM kb_question_source c JOIN kb_source_asset sa ON sa.source_id=c.source_id WHERE c.question_id=kb_question.id)
+ + (SELECT COUNT(DISTINCT c.evidence_asset_id) FROM kb_question_source c WHERE c.question_id=kb_question.id AND c.evidence_asset_id IS NOT NULL)
+ + (SELECT COUNT(DISTINCT c.parent_question_id) FROM kb_question_derivation c WHERE c.child_question_id=kb_question.id))
+      AND NOT EXISTS(SELECT 1 FROM JSON_TABLE(a.facts, '$[*]' COLUMNS(
+        kind VARCHAR(32) PATH '$.kind', identity VARCHAR(128) PATH '$.identity', stamp TEXT PATH '$.stamp'
+      )) f WHERE NOT ((f.kind='CONTENT' AND f.identity=CAST(kb_question.id AS CHAR) AND f.stamp=SHA2(CAST(JSON_ARRAY(kb_question.title,kb_question.stem_html,kb_question.answer_html,kb_question.analysis_html,kb_question.stem_hash,kb_question.subject,kb_question.question_type,kb_question.content_kind,kb_question.difficulty,kb_question.creation_kind,kb_question.source_note,kb_question.layout_mode,kb_question.unit_kind,kb_question.pagination_mode,kb_question.layout_note,kb_question.item_count,kb_question.has_image) AS CHAR),256))
+ OR (f.kind='EVIDENCE_ASSET' AND EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_asset a ON a.asset_id=qs.evidence_asset_id WHERE qs.question_id=kb_question.id AND CAST(a.asset_id AS CHAR)=f.identity AND CAST(JSON_ARRAY(a.status,a.sha256,a.file_size) AS CHAR)=f.stamp))
+ OR (f.kind='KP' AND EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_kp k ON k.id=qk.kp_id WHERE qk.question_id=kb_question.id AND CAST(k.id AS CHAR)=f.identity AND CAST(JSON_ARRAY(k.row_version,k.subject) AS CHAR)=f.stamp))
+ OR (f.kind='OUTLINE' AND EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_kp_outline ko ON ko.kp_id=qk.kp_id JOIN kb_outline o ON o.id=ko.outline_id WHERE qk.question_id=kb_question.id AND CAST(o.id AS CHAR)=f.identity AND CAST(JSON_ARRAY(o.row_version,o.status,o.subject,o.catalog_kind) AS CHAR)=f.stamp))
+ OR (f.kind='NODE' AND EXISTS(SELECT 1 FROM kb_question_kp qk JOIN kb_outline_node_kp nk ON nk.kp_id=qk.kp_id JOIN kb_outline_node n ON n.id=nk.node_id WHERE qk.question_id=kb_question.id AND CONCAT(nk.kp_id,':',n.id)=f.identity AND CAST(JSON_ARRAY(n.row_version,n.outline_id) AS CHAR)=f.stamp))
+ OR (f.kind='SOURCE' AND EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source s ON s.id=qs.source_id WHERE qs.question_id=kb_question.id AND CAST(s.id AS CHAR)=f.identity AND CAST(JSON_ARRAY(s.row_version,s.source_kind) AS CHAR)=f.stamp))
+ OR (f.kind='OCCURRENCE' AND EXISTS(SELECT 1 FROM kb_question_source qs WHERE qs.question_id=kb_question.id AND CAST(qs.id AS CHAR)=f.identity AND CAST(JSON_ARRAY(qs.row_version,qs.source_id,qs.match_status,qs.matched_stem_hash) AS CHAR)=f.stamp))
+ OR (f.kind='ASSET' AND EXISTS(SELECT 1 FROM kb_question_asset qa JOIN kb_asset a ON a.asset_id=qa.asset_id WHERE qa.question_id=kb_question.id AND CAST(a.asset_id AS CHAR)=f.identity AND CAST(JSON_ARRAY(a.status,a.sha256,a.file_size) AS CHAR)=f.stamp))
+ OR (f.kind='SOURCE_ASSET' AND EXISTS(SELECT 1 FROM kb_question_source qs JOIN kb_source_asset sa ON sa.source_id=qs.source_id JOIN kb_asset a ON a.asset_id=sa.asset_id WHERE qs.question_id=kb_question.id AND CONCAT(sa.source_id,':',a.asset_id)=f.identity AND CAST(JSON_ARRAY(a.status,a.sha256,a.file_size,sa.role) AS CHAR)=f.stamp))
+ OR (f.kind='PARENT' AND EXISTS(SELECT 1 FROM kb_question_derivation d JOIN kb_question p ON p.id=d.parent_question_id WHERE d.child_question_id=kb_question.id AND CAST(p.id AS CHAR)=f.identity AND SHA2(CAST(JSON_ARRAY(p.title,p.stem_html,p.answer_html,p.analysis_html,p.subject,p.question_type,p.content_kind,p.creation_kind,p.source_note,p.layout_mode,p.unit_kind,p.pagination_mode,p.layout_note,d.is_primary,d.operation,d.change_note,d.preserved_note) AS CHAR),256)=f.stamp)))))
+  </sql>
+  <select id="usableIds" resultType="long">
+    SELECT kb_question.id FROM kb_question WHERE kb_question.id IN
+    <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    AND <include refid="eligible"/> ORDER BY kb_question.id
+  </select>
+  <select id="frozenParentMatches" resultType="int">SELECT COUNT(*) FROM kb_question_derivation WHERE child_question_id=#{questionId} AND parent_question_id=#{parentId} AND is_primary=1 AND COALESCE(operation,'')!='' AND COALESCE(change_note,'')!='' AND COALESCE(preserved_note,'')!=''</select>
+  <select id="importIdentityMatches" resultType="int">
+    SELECT COUNT(*) FROM kb_import_identity WHERE question_id=#{questionId} AND client_key=#{clientKey}
+      AND create_by=#{createBy} AND request_fingerprint=#{requestFingerprint}
+  </select>
+  <select id="candidateOccurrences" resultType="com.ruoyi.knowledge.domain.KbOccurrence">
+    SELECT id,question_id questionId,source_id sourceId,question_no questionNo,page_from pageFrom,
+      match_status matchStatus,matched_stem_hash matchedStemHash,evidence_asset_id evidenceAssetId,row_version rowVersion
+    FROM kb_question_source WHERE question_id=#{questionId} AND source_id=#{sourceId} ORDER BY id LIMIT 2
+  </select>
+</mapper>

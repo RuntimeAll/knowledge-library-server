@@ -50,6 +50,7 @@ public class KbProductController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:product:add')")
     @Log(title = "成品库", businessType = BusinessType.INSERT)
     @PostMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.create", response = com.ruoyi.knowledge.domain.KbProduct.class, published = false)
     public AjaxResult create(@RequestBody KbProduct data) {
         data.setCreateBy(getUsername());
         return success(service.create(data));
@@ -58,6 +59,7 @@ public class KbProductController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:product:edit')")
     @Log(title = "成品库", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.update", response = com.ruoyi.knowledge.domain.KbProduct.class, published = false)
     public AjaxResult update(@RequestBody KbProduct data) {
         data.setUpdateBy(getUsername());
         return success(service.update(data));
@@ -66,6 +68,7 @@ public class KbProductController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:product:remove')")
     @Log(title = "成品库", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.delete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();
@@ -73,6 +76,7 @@ public class KbProductController extends BaseController {
 
     @PreAuthorize("@ss.hasPermi('knowledge:product:query')")
     @GetMapping("/{id}/versions")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.versions", response = com.ruoyi.knowledge.domain.KbProduct.class, published = false, shape = com.ruoyi.web.core.docs.CoreApi.Shape.ARRAY)
     public AjaxResult versions(@PathVariable Long id) {
         return success(service.versions(id));
     }
@@ -80,6 +84,7 @@ public class KbProductController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:product:edit')")
     @Log(title = "资料描述", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/catalog")
+    @com.ruoyi.web.core.docs.CoreApi(value = "product.updateCatalog", response = com.ruoyi.knowledge.domain.KbProduct.class, published = false)
     public AjaxResult catalog(
             @PathVariable Long id,
             @RequestBody com.ruoyi.knowledge.catalog.KbCatalogCommand command) {

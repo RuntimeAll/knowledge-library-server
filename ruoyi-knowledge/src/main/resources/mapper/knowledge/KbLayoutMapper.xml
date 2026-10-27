@@ -91,7 +91,7 @@
 <result property="pageCount" column="page_count"/>
 </resultMap>
 
-<select id="experiences" resultMap="exp">SELECT * FROM kb_experience <where><if test="name != null and name != ''">AND name LIKE CONCAT('%',#{name},'%')</if><if test="status != null and status != ''">AND status=#{status}</if></where> ORDER BY id DESC</select>
+<select id="experiences" resultMap="exp">SELECT * FROM kb_experience <where><if test="name != null and name != ''">AND name LIKE CONCAT('%',#{name},'%')</if><if test="status != null and status != ''">AND status=#{status}</if><if test="idempotencyKey != null">AND idempotency_key=#{idempotencyKey}</if></where> ORDER BY id DESC</select>
 <select id="experience" resultMap="exp">SELECT * FROM kb_experience WHERE id=#{id}</select>
 <select id="lockExperience" resultMap="exp">SELECT * FROM kb_experience WHERE id=#{id} FOR UPDATE</select>
 <insert id="insertExperience" useGeneratedKeys="true" keyProperty="id">INSERT INTO kb_experience(code,name,experience_type,description,usage_notes,status,create_by,update_by) VALUES(#{code},#{name},#{experienceType},#{description},#{usageNotes},#{status},#{createBy},#{createBy})</insert>
@@ -110,7 +110,17 @@
 <insert id="insertVersionAsset">INSERT INTO kb_experience_version_asset(version_id,resource_key,asset_id,asset_role) VALUES(#{versionId},#{resourceKey},#{assetId},#{assetRole})</insert>
 <delete id="deleteVersionAssets">DELETE FROM kb_experience_version_asset WHERE version_id=#{id}</delete>
 <select id="versionJobs" resultType="long">SELECT COUNT(*) FROM kb_render_job WHERE template_version_id=#{id}</select>
-<select id="jobs" resultMap="job">SELECT id,row_version,template_version_id,actor_user_id,idempotency_key,material_id,material_row_version,renderer_fingerprint,status,retry_count,error_code,error_message,create_by,create_time,update_time FROM kb_render_job <where><if test="actorUserId != null">AND actor_user_id=#{actorUserId}</if><if test="status != null and status != ''">AND status=#{status}</if></where> ORDER BY id DESC</select>
+<select id="jobs" resultMap="job">
+  SELECT id,row_version,template_version_id,actor_user_id,idempotency_key,request_hash,material_id,
+    material_row_version,renderer_fingerprint,status,retry_count,error_code,error_message,create_by,create_time,update_time
+  FROM kb_render_job
+  <where>
+    <if test="actorUserId != null"> AND actor_user_id=#{actorUserId} </if>
+    <if test="status != null and status != ''"> AND status=#{status} </if>
+    <if test="idempotencyKey != null"> AND idempotency_key=#{idempotencyKey} </if>
+  </where>
+  ORDER BY id DESC
+</select>
 <select id="job" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id}</select>
 <select id="lockJob" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id} FOR UPDATE</select>
 <select id="lockOwnedJob" resultMap="job">SELECT * FROM kb_render_job WHERE id=#{id} AND status='RUNNING' AND lease_token=#{token} AND lease_until &gt; NOW() FOR UPDATE</select>

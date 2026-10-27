@@ -38,6 +38,7 @@ public class KbImportItemWorker {
         this.codec = codec;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public KbImportItem write(KbImportBatch batch, int order, ResolvedArticle resolved) {
         guard(batch);
@@ -94,6 +95,13 @@ public class KbImportItemWorker {
             }
         }
         question.setAssetIds(List.copyOf(imageIds));
+        question.setExpectedParentContentHash(document.expectedParentContentHash());
+        question.setExpectedParentRowVersion(document.expectedParentRowVersion());
+        question.setExpectedParentStemHash(document.expectedParentStemHash());
+        question.setGranularityExceptionId(document.granularityExceptionId());
+        question.setImportClientKey(document.clientKey());
+        question.setCandidateArticleHash(document.candidateArticleHash());
+        question.setImportSourceId(batch.getSourceId());
         question.setCreateBy(batch.getCreateBy());
         question.setUpdateBy(batch.getCreateBy());
         KbQuestion saved = switch (document.intent()) {
@@ -109,11 +117,13 @@ public class KbImportItemWorker {
             mapper.updateIdentity(identity);
         }
         ensureSource(batch, saved.getId());
+        questions.bindReviewImport(saved, question, batch.getCreateBy(), resolved.fingerprint());
         KbImportItem item = item(batch, order, document, "SUCCESS", saved.getId(), "导入成功");
         mapper.insertItem(item);
         return item;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public KbImportItem reuse(KbImportBatch batch, int order, HtmlQuestionDocument document, String fingerprint) {
         guard(batch);

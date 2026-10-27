@@ -7,6 +7,9 @@ import com.ruoyi.knowledge.domain.*;
 import java.util.*;
 
 public class KbRenderQuestionSnapshot {
+    private com.ruoyi.knowledge.review.ReviewModels.ApprovalEvidence approvalEvidence;
+    public com.ruoyi.knowledge.review.ReviewModels.ApprovalEvidence getApprovalEvidence() { return approvalEvidence; }
+    public void setApprovalEvidence(com.ruoyi.knowledge.review.ReviewModels.ApprovalEvidence value) { approvalEvidence=value; }
     private KbQuestion question;
     private List<KbOccurrence> occurrences;
     private List<KbKp> knowledgePoints;

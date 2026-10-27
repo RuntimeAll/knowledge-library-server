@@ -18,7 +18,7 @@ class CatalogMapperContractTest {
     void parse() throws Exception {
         c = new Configuration();
         for (String name :
-                List.of("Catalog", "Question", "Source", "Product", "Occurrence", "Material")) {
+                List.of("Catalog", "Review", "Question", "Source", "Product", "Occurrence", "Material")) {
             String resource = "mapper/knowledge/Kb" + name + "Mapper.xml";
             try (var in = getClass().getClassLoader().getResourceAsStream(resource)) {
                 assertNotNull(in);

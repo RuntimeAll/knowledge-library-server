@@ -12,6 +12,7 @@ import java.util.List;
 
 public interface KbKpMapper {
     KbKp selectById(Long id);
+    List<KbKp> selectByIds(@Param("ids") List<Long> ids);
 
     List<KbKpName> selectNames(@Param("ids") List<Long> ids);
 

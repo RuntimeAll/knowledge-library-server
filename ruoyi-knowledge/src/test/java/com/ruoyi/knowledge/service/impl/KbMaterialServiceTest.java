@@ -54,7 +54,7 @@ class KbMaterialServiceTest {
                         mock(IKbQuestionService.class),
                         mock(KbSourceMapper.class),
                         mock(IKbSourceService.class),
-                        mock(IKbKpService.class), mock(KnowledgeDictionary.class));
+                        mock(IKbKpService.class), mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
         KbMaterial material = new KbMaterial();
         material.setTitle("专项");
         material.setSelectionMode("EXAM_ONLY");
@@ -71,6 +71,6 @@ class KbMaterialServiceTest {
                 mock(IKbQuestionService.class),
                 mock(KbSourceMapper.class),
                 mock(IKbSourceService.class),
-                mock(IKbKpService.class), mock(KnowledgeDictionary.class));
+                mock(IKbKpService.class), mock(KnowledgeDictionary.class), mock(com.ruoyi.knowledge.review.KbReviewService.class));
     }
 }

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 
 public interface KbAssetMapper {
     KbAsset selectById(Long assetId);
+    List<KbAsset> selectByIds(@Param("ids") List<Long> ids);
     KbAsset selectByIdForUpdate(Long assetId);
     KbAsset selectByExternalKey(@Param("createBy") String createBy, @Param("externalKey") String externalKey);
     int claimRetry(@Param("assetId") Long assetId, @Param("uploadToken") String uploadToken);

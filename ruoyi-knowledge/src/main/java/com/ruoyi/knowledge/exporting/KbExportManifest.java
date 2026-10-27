@@ -8,7 +8,7 @@ public record KbExportManifest(String schemaVersion, String instanceId, String e
                                String title, String materialId, boolean includeAnswers,
                                List<QuestionEntry> questions, List<AssetEntry> assets,
                                String materialRowVersion,
-                               List<MaterialReferenceSource> materialReferenceSources) {
+                               List<MaterialReferenceSource> materialReferenceSources, String purpose) {
     public record MaterialReferenceSource(String sourceId, String note) { }
     public record KnowledgePoint(String id, String name, String subject, String parentId, String rootId,
                                  String rootName, Integer depth, List<String> outlineIds,

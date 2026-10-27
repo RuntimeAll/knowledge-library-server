@@ -14,6 +14,7 @@
     <result property="createBy" column="create_by"/><result property="createTime" column="create_time"/>
     <result property="updateBy" column="update_by"/><result property="updateTime" column="update_time"/>
   </resultMap>
+  <select id="selectByIds" resultMap="Asset">SELECT * FROM kb_asset WHERE asset_id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach> ORDER BY asset_id</select>
   <select id="selectById" resultMap="Asset">SELECT * FROM kb_asset WHERE asset_id=#{assetId}</select>
   <select id="selectByIdForUpdate" resultMap="Asset">SELECT * FROM kb_asset WHERE asset_id=#{assetId} FOR UPDATE</select>
   <select id="selectByExternalKey" resultMap="Asset">SELECT * FROM kb_asset WHERE create_by=#{createBy} AND external_key=#{externalKey}</select>

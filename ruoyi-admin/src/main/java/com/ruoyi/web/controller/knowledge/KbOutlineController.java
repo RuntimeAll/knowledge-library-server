@@ -54,6 +54,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:add')")
     @Log(title = "大纲管理", businessType = BusinessType.INSERT)
     @PostMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineCreate", response = com.ruoyi.knowledge.domain.KbOutline.class, published = false)
     public AjaxResult create(@RequestBody KbOutline data) {
         data.setCreateBy(getUsername());
         return success(service.create(data));
@@ -62,6 +63,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:edit')")
     @Log(title = "大纲管理", businessType = BusinessType.UPDATE)
     @PutMapping
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineUpdate", response = com.ruoyi.knowledge.domain.KbOutline.class, published = false)
     public AjaxResult update(@RequestBody KbOutline data) {
         data.setUpdateBy(getUsername());
         return success(service.update(data));
@@ -70,6 +72,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:remove')")
     @Log(title = "大纲管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineDelete", response = Void.class, published = false)
     public AjaxResult delete(@PathVariable Long[] ids) {
         service.delete(ids);
         return success();
@@ -78,6 +81,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:edit')")
     @Log(title = "大纲章节", businessType = BusinessType.INSERT)
     @PostMapping("/node")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineNodeCreate", response = com.ruoyi.knowledge.domain.KbOutlineNode.class, published = false)
     public AjaxResult addNode(@RequestBody KbOutlineNode data) {
         data.setCreateBy(getUsername());
         return success(service.createNode(data));
@@ -86,6 +90,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:edit')")
     @Log(title = "大纲章节", businessType = BusinessType.UPDATE)
     @PutMapping("/node")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineNodeUpdate", response = com.ruoyi.knowledge.domain.KbOutlineNode.class, published = false)
     public AjaxResult editNode(@RequestBody KbOutlineNode data) {
         data.setUpdateBy(getUsername());
         return success(service.updateNode(data));
@@ -94,6 +99,7 @@ public class KbOutlineController extends BaseController {
     @PreAuthorize("@ss.hasPermi('knowledge:outline:edit')")
     @Log(title = "大纲章节", businessType = BusinessType.DELETE)
     @DeleteMapping("/node/{id}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "reference.outlineNodeDelete", response = Void.class, published = false)
     public AjaxResult deleteNode(@PathVariable Long id) {
         service.deleteNode(id);
         return success();

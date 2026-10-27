@@ -65,6 +65,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         return data;
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public KbOutline create(KbOutline data) {
         data.setId(null);
@@ -73,6 +74,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "OUTLINE")
     @Transactional
     public KbOutline update(KbOutline data) {
         points.lockGraph();
@@ -92,6 +94,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         return get(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NONE")
     @Transactional
     public void delete(Long[] values) {
         points.lockGraph();
@@ -104,6 +107,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         }
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "OUTLINE")
     @Transactional
     public KbOutlineNode createNode(KbOutlineNode data) {
         points.lockGraph();
@@ -115,6 +119,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         return node(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "OUTLINE")
     @Transactional
     public KbOutlineNode updateNode(KbOutlineNode data) {
         // Serialize the tree before any consistent read creates an RR snapshot.
@@ -136,6 +141,7 @@ public class KbOutlineServiceImpl implements IKbOutlineService {
         return node(data.getId());
     }
 
+    @com.ruoyi.knowledge.review.KbQualityWrite(dependency = "NODE")
     @Transactional
     public void deleteNode(Long id) {
         points.lockGraph();

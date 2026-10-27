@@ -30,7 +30,7 @@ class KbQuestionBatchMapperTest {
     @BeforeEach
     void parse() throws Exception {
         configuration = new Configuration();
-        for (String name : List.of("Question", "Kp", "Occurrence")) {
+        for (String name : List.of("Review", "Question", "Kp", "Occurrence")) {
             String resource = "mapper/knowledge/Kb" + name + "Mapper.xml";
             try (var input = getClass().getClassLoader().getResourceAsStream(resource)) {
                 assertNotNull(input);

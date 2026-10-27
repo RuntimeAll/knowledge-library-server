@@ -44,7 +44,7 @@ class KbCatalogListBatchingTest {
         KbProductMapper mapper = mock(KbProductMapper.class);
         IKbCatalogService catalog = mock(IKbCatalogService.class);
         KbProductServiceImpl service = new KbProductServiceImpl(mapper, mock(KbMaterialMapper.class),
-                mock(IKbAssetService.class), mock(IKbMaterialService.class), catalog);
+                mock(IKbAssetService.class), mock(IKbMaterialService.class), catalog, mock(com.ruoyi.knowledge.review.KbReviewService.class));
         KbProduct product = new KbProduct(); product.setId(45L); product.setRenderJobId(7L);
         product.setSnapshotJson("{\"declaredKpIds\":[11],\"questionRefs\":[{\"questionId\":12,\"seq\":1}],\"referenceSources\":[{\"sourceId\":13}]}");
         Page<KbProduct> page = new Page<>(2, 10); page.setTotal(23); page.add(product);

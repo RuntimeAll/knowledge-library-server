@@ -66,6 +66,8 @@ class CoreApiExportTest {
         String document = mvc.perform(get("/v3/api-docs/core")).andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode spec = json.readTree(document);
+        assertUniqueOperationParameters(spec);
+        assertBooleanQueryParameters(spec, true);
         assertTrue(spec.path("openapi").asText().startsWith("3.1."));
         assertEquals("知识库核心接口", spec.at("/info/title").asText());
         assertEquals("../../", spec.at("/servers/0/url").asText());
@@ -106,6 +108,147 @@ class CoreApiExportTest {
         envelope.put("operations", observed);
         Files.writeString(output.resolve("backend-observed.json"), json.writerWithDefaultPrettyPrinter().writeValueAsString(envelope) + "\n");
         assertEquals(digest, sourceDigest(root), "Source changed while exporting");
+    }
+
+    @Test
+    void exportsExplicitInternalContractsWithoutPublishingRoute() throws Exception {
+        var mapping = context.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
+        var documentation = new CoreApiDocumentation(new CoreApiContracts(), false);
+        var spec = new io.swagger.v3.oas.models.OpenAPI().openapi("3.1.0")
+                .info(new io.swagger.v3.oas.models.info.Info().title("知识库内部接口").version("PRD-010"))
+                .components(new io.swagger.v3.oas.models.Components().addSecuritySchemes("bearerAuth",
+                        new io.swagger.v3.oas.models.security.SecurityScheme()
+                                .type(io.swagger.v3.oas.models.security.SecurityScheme.Type.HTTP).scheme("bearer")))
+                .paths(new io.swagger.v3.oas.models.Paths());
+        Set<String> exported = new java.util.TreeSet<>();
+        for (var entry : mapping.getHandlerMethods().entrySet()) {
+            var handler = entry.getValue();
+            if (!handler.getBeanType().getName().startsWith("com.ruoyi.web.controller.")) { continue; }
+            CoreApi marker = handler.getMethodAnnotation(CoreApi.class);
+            if (marker == null || marker.published()) { continue; }
+            for (var method : entry.getKey().getMethodsCondition().getMethods()) {
+                for (String path : entry.getKey().getPatternValues()) {
+                    var operation = documentation.customize(new io.swagger.v3.oas.models.Operation(), handler);
+                    spec.getPaths().computeIfAbsent(path, ignored -> new io.swagger.v3.oas.models.PathItem())
+                            .operation(io.swagger.v3.oas.models.PathItem.HttpMethod.valueOf(method.name()), operation);
+                    assertTrue(exported.add(method.name() + " " + path));
+                }
+            }
+        }
+        documentation.customise(spec);
+        List<Map<String, Object>> observed = observed();
+        Set<String> selected = new java.util.TreeSet<>();
+        observed.stream().filter(item -> Boolean.FALSE.equals(item.get("core")) && item.containsKey("operationId"))
+                .forEach(item -> selected.add(item.get("method") + " " + item.get("path")));
+        assertEquals(selected, exported);
+        assertEquals(50, exported.size());
+        assertTrue(exported.contains("POST /knowledge/question/{id}/approve"));
+        assertFalse(exported.contains("GET /knowledge/question/list"));
+        Path root = projectRoot();
+        String digest = sourceDigest(root);
+        Path output = root.resolve(".runtime/work/prd-010");
+        Files.createDirectories(output);
+        Path specification = output.resolve("backend-internal-openapi.json");
+        Files.writeString(specification, io.swagger.v3.core.util.Json31.pretty(spec) + "\n");
+        JsonNode exportedSpec = json.readTree(Files.readString(specification));
+        assertUniqueOperationParameters(exportedSpec);
+        assertBooleanQueryParameters(exportedSpec, false);
+        assertInternalParameterShapes(exportedSpec);
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("serviceId", "knowledge");
+        envelope.put("sourceKind", "registered-mappings");
+        envelope.put("sourceDigest", digest);
+        envelope.put("specSha256", sha(Files.readAllBytes(specification)));
+        envelope.put("coverage", List.of("com.ruoyi.web.controller.knowledge.*", "SysDictDataController"));
+        envelope.put("operations", observed);
+        Files.writeString(output.resolve("backend-internal-observed.json"),
+                json.writerWithDefaultPrettyPrinter().writeValueAsString(envelope) + "\n");
+        assertEquals(digest, sourceDigest(root), "Source changed while exporting internal contracts");
+        assertFalse(mvc.perform(get("/v3/api-docs/internal")).andReturn().getResponse()
+                .getContentAsString().contains("\"paths\""));
+    }
+
+    private static void assertUniqueOperationParameters(JsonNode spec) {
+        spec.path("paths").properties().forEach(path -> path.getValue().properties().forEach(method -> {
+            if (!method.getValue().has("operationId")) { return; }
+            Set<String> identities = new java.util.HashSet<>();
+            method.getValue().path("parameters").forEach(parameter -> {
+                String identity = parameter.path("name").asText() + ":" + parameter.path("in").asText();
+                assertTrue(identities.add(identity), method.getValue().path("operationId").asText()
+                        + " duplicates parameter " + identity + " at " + method.getKey() + " " + path.getKey());
+            });
+        }));
+    }
+
+    private void assertBooleanQueryParameters(JsonNode spec, boolean published) throws Exception {
+        var mapping = context.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
+        for (var entry : mapping.getHandlerMethods().entrySet()) {
+            var handler = entry.getValue();
+            CoreApi marker = handler.getMethodAnnotation(CoreApi.class);
+            if (marker == null || marker.published() != published) { continue; }
+            Set<String> expected = booleanQueryNames(handler.getMethod(), marker);
+            for (String path : entry.getKey().getPatternValues()) {
+                for (var method : entry.getKey().getMethodsCondition().getMethods()) {
+                    JsonNode operation = spec.path("paths").path(path).path(method.name().toLowerCase(java.util.Locale.ROOT));
+                    for (String name : expected) {
+                        JsonNode parameter = java.util.stream.StreamSupport.stream(operation.path("parameters").spliterator(), false)
+                                .filter(value -> name.equals(value.path("name").asText()) && "query".equals(value.path("in").asText()))
+                                .findFirst().orElseThrow(() -> new AssertionError(marker.value() + " missing boolean query " + name));
+                        assertTrue(parameter.at("/schema/type").toString().contains("\"boolean\""),
+                                marker.value() + " must export boolean query " + name + ": " + parameter.path("schema"));
+                        if ("reasonable".equals(name)) {
+                            boolean forcedFalse = Set.of("question.list", "reference.materialCandidates").contains(marker.value());
+                            assertEquals(!forcedFalse, parameter.at("/schema/default").asBoolean(), marker.value());
+                            if (forcedFalse) {
+                                assertTrue(parameter.path("description").asText().contains("服务端强制false"));
+                                assertTrue(parameter.path("description").asText().contains("客户端传true也不会改变"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static Set<String> booleanQueryNames(java.lang.reflect.Method method, CoreApi marker) throws Exception {
+        Set<String> names = new java.util.HashSet<>();
+        if (marker.shape() == CoreApi.Shape.PAGE) { names.add("reasonable"); }
+        for (var parameter : method.getParameters()) {
+            var query = parameter.getAnnotation(org.springframework.web.bind.annotation.RequestParam.class);
+            if (query != null && (parameter.getType() == Boolean.class || parameter.getType() == boolean.class)) {
+                names.add(!query.name().isEmpty() ? query.name() : !query.value().isEmpty() ? query.value() : parameter.getName());
+            } else if (marker.queryFields().length > 0 && parameter.getType().getName().startsWith("com.ruoyi.")) {
+                for (var property : java.beans.Introspector.getBeanInfo(parameter.getType()).getPropertyDescriptors()) {
+                    if (List.of(marker.queryFields()).contains(property.getName())
+                            && (property.getPropertyType() == Boolean.class || property.getPropertyType() == boolean.class))
+                        { names.add(property.getName()); }
+                }
+            }
+        }
+        return names;
+    }
+
+    private static void assertInternalParameterShapes(JsonNode spec) {
+        JsonNode jobs = spec.path("paths").path("/knowledge/render/jobs").path("get");
+        JsonNode lookup = java.util.stream.StreamSupport.stream(jobs.path("parameters").spliterator(), false)
+                .filter(parameter -> "idempotencyKey".equals(parameter.path("name").asText())).findFirst().orElseThrow();
+        assertEquals("query", lookup.path("in").asText());
+        assertEquals("string", lookup.at("/schema/type").asText());
+        assertFalse(lookup.path("required").asBoolean());
+        for (String route : List.of("/knowledge/kp/names", "/knowledge/question/{ids}")) {
+            String method = route.endsWith("names") ? "get" : "delete";
+            JsonNode parameter = spec.path("paths").path(route).path(method).path("parameters").get(0);
+            assertEquals("array", parameter.at("/schema/type").asText());
+            assertEquals("string", parameter.at("/schema/items/type").asText());
+        }
+        JsonNode html = spec.path("paths").path("/knowledge/import/html").path("post");
+        assertEquals("array", html.at("/requestBody/content/multipart~1form-data/schema/properties/resources/type").asText());
+        JsonNode download = spec.path("paths").path("/knowledge/render/jobs/{id}/outputs/{outputKey}").path("get");
+        download.path("parameters").forEach(parameter -> {
+            if ("kind".equals(parameter.path("name").asText())) { assertFalse(parameter.path("required").asBoolean()); }
+        });
+        JsonNode legacy = spec.path("paths").path("/knowledge/question/{ids}").path("delete");
+        assertFalse(legacy.at("/responses/200/content/application~1json/examples").has("success"));
     }
 
     @Test
@@ -177,7 +320,7 @@ class CoreApiExportTest {
                 assertEquals("integer", parameter.at("/schema/type").asText());
                 assertFalse(parameter.path("schema").has("maximum"));
             } else if (parameter.path("name").asText().equals("reasonable")) {
-                assertTrue(parameter.at("/schema/default").asBoolean());
+                assertFalse(parameter.at("/schema/default").asBoolean());
                 assertTrue(parameter.path("description").asText().contains("末页"));
             }
         }

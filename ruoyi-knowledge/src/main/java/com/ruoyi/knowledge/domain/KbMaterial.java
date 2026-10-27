@@ -17,6 +17,9 @@ public class KbMaterial extends BaseEntity {
     private List<KbQuestion> questions;
     private Boolean selectionValid;
     private Integer questionCount;
+    private List<String> unavailableQuestionIds = List.of();
+    public List<String> getUnavailableQuestionIds() { return unavailableQuestionIds; }
+    public void setUnavailableQuestionIds(List<String> value) { unavailableQuestionIds = value; }
 
     @com.fasterxml.jackson.annotation.JsonFormat(
             shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)

@@ -4,6 +4,29 @@ import java.util.List;
 
 /** 题目筛选条件与内部考点、参考范围约束。 */
 public class KbQuestionQuery {
+    private String purpose;
+    private List<Long> ids;
+    private String approvalJson;
+    private Integer pageNum = 1;
+    private Integer pageSize = 10;
+    public String getPurpose() { return purpose; }
+    public void setPurpose(String value) { purpose = value; }
+    public List<Long> getIds() { return ids; }
+    public void setIds(List<Long> value) { ids = value; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getApprovalJson() { return approvalJson; }
+    public void setApprovalJson(String value) { approvalJson = value; }
+    public Integer getPageNum() { return pageNum; }
+    public void setPageNum(Integer value) { pageNum = value; }
+    public Integer getPageSize() { return pageSize; }
+    public void setPageSize(Integer value) { pageSize = value; }
+    public void validatePage() {
+        if (pageNum == null || pageNum < 1 || pageSize == null || pageSize < 1 || pageSize > 100)
+            { throw new com.ruoyi.common.exception.ServiceException("分页需pageNum>=1、pageSize为1至100", 400); }
+        if (ids != null && (ids.isEmpty() || ids.size() > 100 || ids.stream().anyMatch(id -> id == null || id < 1)
+                || ids.stream().distinct().count() != ids.size()))
+            { throw new com.ruoyi.common.exception.ServiceException("ids需1至100个不重复正整数ID", 400); }
+    }
     private String title;
     private String query;
     private String matchMode;

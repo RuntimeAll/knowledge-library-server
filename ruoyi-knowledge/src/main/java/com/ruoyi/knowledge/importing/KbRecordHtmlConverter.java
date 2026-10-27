@@ -46,6 +46,10 @@ public class KbRecordHtmlConverter {
             if (record.questionId() != null) article.attr("data-question-id", record.questionId().toString());
             if (record.rowVersion() != null) article.attr("data-row-version", record.rowVersion().toString());
             if (record.parentId() != null) article.attr("data-parent-id", record.parentId().toString());
+            if (record.expectedParentRowVersion() != null) { article.attr("data-expected-parent-row-version", record.expectedParentRowVersion().toString()); }
+            if (record.expectedParentStemHash() != null) { article.attr("data-expected-parent-stem-hash", record.expectedParentStemHash()); }
+            if (record.expectedParentContentHash() != null) { article.attr("data-expected-parent-content-hash", record.expectedParentContentHash()); }
+            if (record.granularityExceptionId() != null) { article.attr("data-granularity-exception-id", record.granularityExceptionId()); }
             HtmlMetadata metadata = record.metadata() == null ? HtmlMetadata.empty() : record.metadata();
             var items = record.items();
             if (items != null) {
