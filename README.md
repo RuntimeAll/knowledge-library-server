@@ -91,7 +91,7 @@ RuoYi-Vue 前端项目提供 Vue 2.x / 3.x / JavaScript / TypeScript 版本，�
 
 ## 在线体验
 
-- admin/admin123  
+- 本项目管理员密码由部署者自行设置，使用时从本地私有配置取值；不随仓库提供口令。  
 - 陆陆续续收到一些打赏，为了更好的体验已用于演示服务器升级。谢谢各位小伙伴。
 
 演示地址：http://vue.ruoyi.vip  
