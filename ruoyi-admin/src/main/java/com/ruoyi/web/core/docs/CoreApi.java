@@ -13,6 +13,8 @@ public @interface CoreApi {
     Class<?> response();
     /** Complete internal contracts may be maintained without publishing their route. */
     boolean published() default true;
+    /** Documentation only; actual anonymous access must be configured independently in security. */
+    boolean anonymous() default false;
     Shape shape() default Shape.DATA;
     String[] queryFields() default {};
     String mediaType() default "application/json";

@@ -50,5 +50,8 @@
       + (SELECT COUNT(*) FROM kb_occurrence_collection WHERE evidence_asset_id=#{assetId})
       + (SELECT COUNT(*) FROM kb_experience_version_asset WHERE asset_id=#{assetId})
       + (SELECT COUNT(*) FROM kb_render_job_asset WHERE asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_publication_image WHERE asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_publication_product WHERE evidence_asset_id=#{assetId})
+      + (SELECT COUNT(*) FROM kb_publication WHERE share_asset_id=#{assetId})
   </select>
 </mapper>

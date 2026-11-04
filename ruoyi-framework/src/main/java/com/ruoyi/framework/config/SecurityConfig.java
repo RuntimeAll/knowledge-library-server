@@ -100,6 +100,7 @@ public class SecurityConfig
             .authorizeHttpRequests((requests) -> {
                 // Only the selected JSON and UI configuration are public; deny alternate specs for all users.
                 requests.requestMatchers(HttpMethod.GET, "/v3/api-docs/core", "/v3/api-docs/swagger-config").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/public/publications/**", "/p/*", "/publication-static/assets/*").permitAll()
                         .requestMatchers("/v3/api-docs", "/v3/api-docs.yaml", "/v3/api-docs.yaml/**", "/v3/api-docs/**").denyAll();
                 permitAllUrl.getUrls().forEach(url -> requests.requestMatchers(url).permitAll());
                 // 对于登录login 注册register 验证码captchaImage 允许匿名访问

@@ -61,12 +61,12 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
             return operation;
         }
         CoreApiContracts.Contract contract = contracts.require(api.value());
-        verifyPermission(handler, contract);
+        verifyPermission(handler, api, contract);
         operation.setOperationId(api.value());
         operation.setTags(List.of(TAGS.get(contract.group())));
         operation.setSummary("[" + contract.action() + "] " + contract.summary());
         operation.setDescription(description(contract));
-        operation.setSecurity(List.of(new SecurityRequirement().addList("bearerAuth")));
+        operation.setSecurity(api.anonymous() ? List.of() : List.of(new SecurityRequirement().addList("bearerAuth")));
         operation.addExtension("x-kb-group", contract.group());
         operation.addExtension("x-kb-action", contract.action());
         operation.addExtension("x-kb-prd-refs", contract.prdRefs());
@@ -128,12 +128,15 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
                     .content(new Content().addMediaType("multipart/form-data", new MediaType().schema(multipart).example(contract.requestExample()))));
         }
         if (api.shape() == CoreApi.Shape.PAGE) {
+            boolean explicitPaging = api.value().startsWith("publication.");
             addPaginationParameter(parameters, parameter("pageNum", "query", false, new IntegerSchema()._default(1), contract));
-            addPaginationParameter(parameters, parameter("pageSize", "query", false, new IntegerSchema()._default(10), contract));
-            addPaginationParameter(parameters, parameter("orderByColumn", "query", false, new StringSchema(), contract));
-            addPaginationParameter(parameters, parameter("isAsc", "query", false, new StringSchema(), contract));
-            boolean reasonable = !Set.of("question.list", "reference.materialCandidates").contains(api.value());
-            addPaginationParameter(parameters, parameter("reasonable", "query", false, new BooleanSchema()._default(reasonable), contract));
+            addPaginationParameter(parameters, parameter("pageSize", "query", false, new IntegerSchema()._default(explicitPaging ? 20 : 10), contract));
+            if (!explicitPaging) {
+                addPaginationParameter(parameters, parameter("orderByColumn", "query", false, new StringSchema(), contract));
+                addPaginationParameter(parameters, parameter("isAsc", "query", false, new StringSchema(), contract));
+                boolean reasonable = !Set.of("question.list", "reference.materialCandidates").contains(api.value());
+                addPaginationParameter(parameters, parameter("reasonable", "query", false, new BooleanSchema()._default(reasonable), contract));
+            }
         }
         operation.setParameters(parameters.isEmpty() ? null : parameters);
     }
@@ -145,6 +148,8 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
             parameters.add(fallback);
         } else {
             if (existing.getSchema() == null) { existing.setSchema(fallback.getSchema()); }
+            else if (existing.getSchema().getDefault() == null && fallback.getSchema().getDefault() != null)
+                { existing.getSchema().setDefault(fallback.getSchema().getDefault()); }
             if (existing.getDescription() == null || existing.getDescription().isBlank())
                 { existing.setDescription(fallback.getDescription()); }
         }
@@ -157,6 +162,12 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
             for (var property : Introspector.getBeanInfo(type).getPropertyDescriptors()) {
                 if (property.getReadMethod() != null) {
                     types.put(property.getName(), property.getReadMethod().getGenericReturnType());
+                }
+            }
+            for (var field : type.getFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(field.getModifiers()) && !field.isSynthetic()
+                        && !field.isAnnotationPresent(com.fasterxml.jackson.annotation.JsonIgnore.class)) {
+                    types.putIfAbsent(field.getName(), field.getGenericType());
                 }
             }
             for (String field : allowed) {
@@ -182,6 +193,12 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
 
     private void responses(Operation operation, CoreApi api, CoreApiContracts.Contract contract) {
         Schema error = CoreApiSchemas.error();
+        if (api.value().startsWith("publication.") && !api.anonymous()) {
+            Class<?> errorType = com.ruoyi.knowledge.publication.PublicationModels.ErrorDetail.class;
+            responseSchemas.describe(errorType, contract.parameterDescriptions(), "data");
+            Schema detail = responseSchemas.resolve(errorType);
+            error.addProperty("data", new Schema<>().$ref(detail.get$ref() + ".Response"));
+        }
         error.addProperty("code", new IntegerSchema().not(new IntegerSchema()._enum(List.of(200))));
         Content content = new Content();
         if (api.shape() == CoreApi.Shape.BINARY) {
@@ -203,6 +220,15 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
                 .description("检查HTTP状态之外，还须检查JSON code及导入逐项状态；业务拒绝仍可能返回HTTP 200。")
                 .content(content)).addApiResponse("default", new ApiResponse()
                 .description("代理、容器或网络层失败按实际HTTP状态处理；不得当作业务成功。")));
+        if (api.anonymous()) {
+            for (int status : List.of(400, 404, 503)) {
+                operation.getResponses().addApiResponse(Integer.toString(status), new ApiResponse()
+                        .description("公开门禁拒绝；不泄露后台对象存在性或操作详情。")
+                        .content(new Content().addMediaType("application/json", new MediaType()
+                                .schema(CoreApiSchemas.error()).example(Map.of("code", status, "msg",
+                                        status == 503 ? "资料暂不可用，请稍后重试" : "该分享资料不可用")))));
+            }
+        }
     }
 
     @Override
@@ -279,9 +305,13 @@ public final class CoreApiDocumentation implements OperationCustomizer, OpenApiC
         });
     }
 
-    private static void verifyPermission(HandlerMethod handler, CoreApiContracts.Contract contract) {
+    private static void verifyPermission(HandlerMethod handler, CoreApi api, CoreApiContracts.Contract contract) {
         PreAuthorize permission = handler.getMethodAnnotation(PreAuthorize.class);
-        String actual = permission == null ? "authenticated" : permission.value();
+        if (api.anonymous() && (permission != null
+                || handler.getMethodAnnotation(org.springframework.web.bind.annotation.GetMapping.class) == null)) {
+            throw new IllegalStateException("Anonymous contract marker requires a GET handler without PreAuthorize");
+        }
+        String actual = api.anonymous() ? "anonymous" : permission == null ? "authenticated" : permission.value();
         if (!actual.replaceAll("\\s+", "").equals(contract.permissionRule().replaceAll("\\s+", ""))) {
             throw new IllegalStateException("Permission documentation differs for " + handler.getMethod().getName());
         }

@@ -4,6 +4,10 @@ import com.ruoyi.knowledge.mapper.KbReviewMapper;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -63,6 +67,34 @@ class KbReviewLineageTest {
         verifyNoInteractions(graph.mapper,graph.questions);
     }
 
+    @Test void publicationPolicyCanBeConsumedByFrozenParentEvidence() {
+        var graph = graph(3, false, false);
+        graph.approvals.replaceAll((key, p) -> new ReviewModels.Prepared(p.operationId(), p.requestHash(),
+                p.action(), p.actor(), p.reason(), ReviewPolicies.PUBLICATION, p.before(), p.after(),
+                p.granularityExceptionId(), p.reasonCategory(), p.affectedBefore(), p.affectedAfter(), p.evidence()));
+        assertTrue(graph.lineage.evidenceValid(graph.approvals.get("approve-1")));
+        verifyNoInteractions(graph.mapper, graph.questions);
+    }
+
+    @Test void publicationSourcesComeFromValidatedFrozenChainAndNeverFromChangedParentFacts() {
+        var graph = graph(3, false, false);
+        for (var frozen : graph.frozen) {
+            Long id = Long.valueOf(frozen.questionId());
+            when(graph.questions.selectById(id)).thenReturn(frozen.question());
+            when(graph.mapper.facts(id)).thenReturn(frozen.facts());
+        }
+        when(graph.questions.selectKpIds(anyLong())).thenReturn(null);
+        when(graph.questions.selectAssetIds(anyLong())).thenReturn(null);
+        when(graph.mapper.importIdentityMatches(any())).thenReturn(1);
+        when(graph.mapper.frozenParentMatches(anyLong(), anyLong())).thenReturn(1);
+        var evidence = graph.lineage.publicationEvidence(graph.frozen.get(0).question());
+        assertEquals("binding-1", evidence.bindingId());
+        assertEquals(List.of("41"), evidence.sourceIds());
+        assertEquals(List.of("51"), evidence.occurrenceIds());
+        when(graph.mapper.facts(3L)).thenReturn(List.of(new ReviewModels.Fact("SOURCE", "99", "changed")));
+        assertNull(graph.lineage.publicationEvidence(graph.frozen.get(0).question()));
+    }
+
     private static Graph graph(int count, boolean cycle, boolean legacy) {
         var ledger = mock(KbReviewLedger.class);
         var mapper = mock(KbReviewMapper.class);
@@ -76,7 +108,8 @@ class KbReviewLineageTest {
             var question = new KbQuestion();question.setId((long)index+1);question.setRowVersion(1L);
             question.setCreationKind(hasParent?"DERIVED":"AUTHORED");
             var facts = hasParent ? List.of(new ReviewModels.Fact("PARENT",Integer.toString((index+1)%count+1),"frozen-edge"))
-                    : List.<ReviewModels.Fact>of();
+                    : List.of(new ReviewModels.Fact("SOURCE", "41", "source-snapshot"),
+                            new ReviewModels.Fact("OCCURRENCE", "51", "occurrence-snapshot"));
             String content = KbQuestionFingerprint.content(question);
             frozen.add(new ReviewModels.ParentFreeze(id,"1",KbReviewLedger.hash(JSON.toJSONBytes(List.of(content,facts))),
                     "approve-"+id,question,facts));
@@ -102,9 +135,10 @@ class KbReviewLineageTest {
         when(ledger.bindings()).thenReturn(bindings);
         when(ledger.prepared(anyString())).thenAnswer(call -> approvals.get(call.getArgument(0)));
         when(ledger.terminal(anyString())).thenAnswer(call -> new ReviewModels.Terminal(call.getArgument(0),"a".repeat(64),"CONFIRMED"));
-        return new Graph(new KbReviewLineage(ledger,mapper,questions),mapper,questions,approvals,bindings);
+        return new Graph(new KbReviewLineage(ledger,mapper,questions),mapper,questions,approvals,bindings,frozen);
     }
 
     private record Graph(KbReviewLineage lineage,KbReviewMapper mapper,KbQuestionMapper questions,
-            Map<String,ReviewModels.Prepared> approvals,List<ReviewModels.ImportBinding> bindings) { }
+            Map<String,ReviewModels.Prepared> approvals,List<ReviewModels.ImportBinding> bindings,
+            List<ReviewModels.ParentFreeze> frozen) { }
 }

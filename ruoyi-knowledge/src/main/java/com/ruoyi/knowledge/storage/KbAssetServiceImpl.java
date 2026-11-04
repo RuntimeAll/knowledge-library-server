@@ -183,6 +183,18 @@ public class KbAssetServiceImpl implements IKbAssetService {
     }
 
     @Override
+    public Preview publicationDownload(Long assetId) {
+        KbAsset asset = requireReady(assetId);
+        if (!"IMPORT_RESOURCE".equals(asset.getPurpose()) || !"application/zip".equals(asset.getContentType())
+                || !properties.getBucket().equals(asset.getBucketName())
+                || !asset.getObjectKey().startsWith(normalizedPrefix() + "/")) {
+            throw new ServiceException("此资产不是知识库发布下载包", 400);
+        }
+        return new Preview(storage.previewUrl(asset.getBucketName(), asset.getObjectKey(), asset.getOssVersionId(), 600),
+                600, asset.getContentType());
+    }
+
+    @Override
     public void delete(Long assetId) {
         KbAsset asset = transactions.execute(status -> {
             KbAsset locked = mapper.selectByIdForUpdate(assetId);

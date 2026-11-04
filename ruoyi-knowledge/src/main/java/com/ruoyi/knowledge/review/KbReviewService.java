@@ -24,7 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** Review use cases and recovery own their outermost transaction, independent of ordinary edits. */
 @Service
 public class KbReviewService {
-    public static final String POLICY = "PRD010-QUALITY-1";
+    public static final String POLICY = ReviewPolicies.STANDARD;
     private final KbReviewLedger ledger;
     private final KbReviewGate gate;
     private final KbQuestionMapper questions;
@@ -53,19 +53,29 @@ public class KbReviewService {
     public String contentHash(KbQuestion question) { return proofs.basis(question); }
 
     public ReviewModels.Readiness readiness(Long id) {
+        return readiness(id, ReviewPolicies.STANDARD);
+    }
+
+    ReviewModels.Readiness publicationReadiness(Long id) {
+        return readiness(id, ReviewPolicies.PUBLICATION);
+    }
+
+    private ReviewModels.Readiness readiness(Long id, String policy) {
         requireEnabled();
         gate.enter();
         try {
             assertResolved();
             KbQuestion question = current(id, false);
-            List<ReviewModels.Check> checks = checks(question);
             ReviewModels.Prepared approved = approval(id);
+            String evaluationPolicy = "READY".equals(question.getStatus()) && approved != null
+                    ? approved.policyVersion() : policy;
+            List<ReviewModels.Check> checks = checks(question, evaluationPolicy);
             boolean eligible = approved != null && "READY".equals(question.getStatus())
                     && snapshot(question).equals(approved.after()) && proofs.evidenceValid(approved)
                     && mapper.usableIds(List.of(id), approvalJson()).contains(id);
             return new ReviewModels.Readiness(id.toString(), question.getRowVersion().toString(),
                     question.getStatus(), eligible, "DRAFT".equals(question.getStatus())
-                    && checks.stream().allMatch(ReviewModels.Check::passed), POLICY, checks,
+                    && checks.stream().allMatch(ReviewModels.Check::passed), evaluationPolicy, checks,
                     mapper.impact(id), approved == null ? null : receipt(approved, "CONFIRMED"), proofs.basis(question),
                     approved == null ? null : KbReviewLedger.hash(JSON.toJSONBytes(
                             List.of(approved.after().contentHash(), approved.after().facts()))));
@@ -73,12 +83,24 @@ public class KbReviewService {
     }
 
     public ReviewModels.Receipt act(Long id, String action, ReviewModels.Command command) {
+        return act(id, action, command, ReviewPolicies.STANDARD, null, null);
+    }
+
+    ReviewModels.Receipt approvePublication(Long id, ReviewModels.Command command,
+            ReviewModels.PublicationContext context, String saleOperationKey) {
+        return act(id, "APPROVE", command, ReviewPolicies.PUBLICATION, context, saleOperationKey);
+    }
+
+    private ReviewModels.Receipt act(Long id, String action, ReviewModels.Command command, String policy,
+            ReviewModels.PublicationContext context, String saleOperationKey) {
         requireEnabled();
         validateCommand(command);
         if (!List.of("APPROVE", "RETURN_TO_DRAFT", "SOFT_DELETE", "RESTORE").contains(action))
             { throw new ServiceException("审核动作无效", 400); }
         String actor = SecurityUtils.getUsername();
-        String requestHash = KbReviewLedger.hash(JSON.toJSONBytes(List.of(id, action, actor, command)));
+        String requestHash = KbReviewLedger.hash(JSON.toJSONBytes(context == null
+                ? List.of(id, action, actor, command)
+                : List.of(id, action, actor, command, policy, context, saleOperationKey)));
         gate.enter();
         try {
             requireOutsideTransaction();
@@ -95,7 +117,7 @@ public class KbReviewService {
             recover();
             ReviewModels.Prepared prepared;
             try {
-                prepared = transaction.execute(status -> perform(id, action, command, actor, requestHash));
+                prepared = transaction.execute(status -> perform(id, action, command, actor, requestHash, policy));
             } catch (RuntimeException failure) {
                 if (ledger.prepared(command.operationId()) != null) {
                     // Commit outcome may be unknown: a NEW locking transaction, never the failed snapshot.
@@ -112,7 +134,7 @@ public class KbReviewService {
     }
 
     private ReviewModels.Prepared perform(Long id, String action, ReviewModels.Command command,
-            String actor, String requestHash) {
+            String actor, String requestHash, String policy) {
         boolean lifecycle = List.of("RETURN_TO_DRAFT", "SOFT_DELETE").contains(action);
         if (lifecycle && !List.of("STOP_USE", "CONTENT_ERROR", "SOURCE_ERROR").contains(String.valueOf(command.reasonCategory())))
             { throw new ServiceException("退回或删除须明确STOP_USE、CONTENT_ERROR或SOURCE_ERROR", 400); }
@@ -131,7 +153,7 @@ public class KbReviewService {
                     { throw new ServiceException("批准须携带已审查版本的完整contentHash，请重新读取题目", 400); }
                 if (!Objects.equals(command.expectedContentHash(), proofs.basis(question)))
                     { throw new ServiceException("题目内容或依赖已变化，请重新读取并审查", 409); }
-                List<String> failures = checks(question).stream().filter(check -> !check.passed())
+                List<String> failures = checks(question, policy).stream().filter(check -> !check.passed())
                         .map(ReviewModels.Check::message).toList();
                 if (!failures.isEmpty()) { throw new ServiceException(String.join("；", failures), 409); }
                 yield "READY";
@@ -159,7 +181,7 @@ public class KbReviewService {
                         "DRAFT", q.contentHash(), q.facts()) : q).toList();
         ReviewModels.GranularityException exception = "APPROVE".equals(action) ? proofs.matching(question) : null;
         ReviewModels.Prepared prepared = new ReviewModels.Prepared(command.operationId(), requestHash,
-                action, actor, command.reason(), POLICY, before, after,
+                action, actor, command.reason(), policy, before, after,
                 exception == null ? null : exception.exceptionId(), command.reasonCategory(), affectedBefore, affectedAfter,
                 "APPROVE".equals(action) ? proofs.evidence(question, exception) : List.of());
         ledger.prepare(prepared);
@@ -229,7 +251,7 @@ public class KbReviewService {
         var approvals = new HashMap<String, ReviewModels.Approval>();
         for (ReviewModels.Prepared prepared : ledger.operations()) {
             if (!proofs.evidenceValid(prepared)) { continue; }
-            if (!"APPROVE".equals(prepared.action()) || !POLICY.equals(prepared.policyVersion())
+            if (!"APPROVE".equals(prepared.action()) || !ReviewPolicies.supported(prepared.policyVersion())
                     || !"CONFIRMED".equals(ledger.terminal(prepared.operationId()).outcome())) { continue; }
             ReviewModels.Snapshot after = prepared.after();
             ReviewModels.Approval old = approvals.get(after.questionId());
@@ -266,7 +288,7 @@ public class KbReviewService {
         var result=new java.util.HashMap<Long,ReviewModels.ApprovalEvidence>();
         for (ReviewModels.Prepared p : ledger.operations()) {
             Long id=Long.valueOf(p.after().questionId());
-            if (!ids.contains(id) || !"APPROVE".equals(p.action()) || !POLICY.equals(p.policyVersion())
+            if (!ids.contains(id) || !"APPROVE".equals(p.action()) || !ReviewPolicies.supported(p.policyVersion())
                     || ledger.terminal(p.operationId())==null || !"CONFIRMED".equals(ledger.terminal(p.operationId()).outcome())) { continue; }
             var previous=result.get(id);
             if (previous==null || Long.parseLong(previous.rowVersion())<Long.parseLong(p.after().rowVersion()))
@@ -294,7 +316,7 @@ public class KbReviewService {
         proofs.bindImport(saved, input, actor, fingerprint);
     }
 
-    private List<ReviewModels.Check> checks(KbQuestion question) {
+    private List<ReviewModels.Check> checks(KbQuestion question, String policy) {
         List<ReviewModels.Check> checks = new ArrayList<>();
         checks.add(new ReviewModels.Check("CONTENT", "题干须有完整可见内容", QuestionContentRules.hasContent(question.getStemHtml())));
         checks.add(new ReviewModels.Check("CLASSIFICATION", "须填写学科、内容类型、题型和考点", notBlank(question.getSubject())
@@ -303,18 +325,14 @@ public class KbReviewService {
         boolean origin = "DERIVED".equals(question.getCreationKind()) ? proofs.derivedEvidence(question)
                 : mapper.validOrigin(question.getId(), question.getCreationKind()) > 0;
         checks.add(new ReviewModels.Check("ORIGIN", "须有当前真实出处或已验证的冻结母题证据", origin));
-        checks.add(new ReviewModels.Check("ANSWER", "练习须有完整答案", !"EXERCISE".equals(question.getContentKind()) || completeAnswer(question)));
+        checks.add(new ReviewModels.Check("ANSWER", ReviewPolicies.PUBLICATION.equals(policy)
+                ? "允许未提供答案；已有答案须有效完整" : "练习须有完整答案", ReviewPolicies.answerValid(question, policy)));
         checks.add(new ReviewModels.Check("ASSETS", "必要资产须完整且READY", mapper.invalidAssets(question.getId()) == 0));
         int count = KbHtmlLayout.validateParts(question.getStemHtml(), question.getAnswerHtml(), question.getAnalysisHtml()).itemCount();
         checks.add(new ReviewModels.Check("GRANULARITY", "计算练习需至少3道完整小题或有效专项例外", !"CALCULATION".equals(question.getQuestionType()) || count >= 3 || hasException(question)));
         dictionary.validate("kb_subject", question.getSubject(), "学科");
         dictionary.validate("kb_question_type", question.getQuestionType(), "题型");
         return List.copyOf(checks);
-    }
-
-    private static boolean completeAnswer(KbQuestion question) {
-        return ReviewContentChecks.completeAnswer(question.getStemHtml(), question.getAnswerHtml(),
-                "GROUP".equals(question.getUnitKind()));
     }
 
     private boolean hasException(KbQuestion question) {
@@ -338,7 +356,7 @@ public class KbReviewService {
     }
 
     private ReviewModels.Prepared approval(Long id) {
-        return ledger.operations().stream().filter(p -> "APPROVE".equals(p.action()) && POLICY.equals(p.policyVersion())
+        return ledger.operations().stream().filter(p -> "APPROVE".equals(p.action()) && ReviewPolicies.supported(p.policyVersion())
                 && id.toString().equals(p.after().questionId()) && ledger.terminal(p.operationId()) != null
                 && "CONFIRMED".equals(ledger.terminal(p.operationId()).outcome()))
                 .max(Comparator.comparingLong(p -> Long.parseLong(p.after().rowVersion()))).orElse(null);

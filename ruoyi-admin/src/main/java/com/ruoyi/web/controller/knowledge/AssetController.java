@@ -63,6 +63,8 @@ public class AssetController extends BaseController {
 
     @GetMapping("/{assetId}/preview")
     @PreAuthorize("@ss.hasPermi('knowledge:asset:query')")
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.preview", published = false,
+            response = com.ruoyi.knowledge.storage.IKbAssetService.Preview.class)
     public AjaxResult preview(@PathVariable Long assetId) {
         renders.assertAssetDownload(assetId);
         return success(assets.preview(assetId));
@@ -87,6 +89,7 @@ public class AssetController extends BaseController {
     }
 
     @DeleteMapping("/{assetId}")
+    @com.ruoyi.web.core.docs.CoreApi(value = "asset.delete", published = false, response = Void.class)
     @PreAuthorize("@ss.hasPermi('knowledge:asset:remove')")
     @Log(title = "知识库文件删除", businessType = BusinessType.DELETE)
     public AjaxResult delete(@PathVariable Long assetId) {

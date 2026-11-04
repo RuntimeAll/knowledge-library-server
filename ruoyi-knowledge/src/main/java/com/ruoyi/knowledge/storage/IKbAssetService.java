@@ -16,6 +16,8 @@ public interface IKbAssetService {
     KbAsset uploadBytes(byte[] bytes, String originalName, String contentType, String purpose, String testRunId, String idempotencyKey);
     InputStream openContent(Long assetId);
     Preview preview(Long assetId);
+    /** Internal publication download signing; never exposed as an arbitrary asset signing endpoint. */
+    Preview publicationDownload(Long assetId);
     void delete(Long assetId);
     String validateTestRunId(String testRunId);
 }

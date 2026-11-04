@@ -141,7 +141,8 @@ class CoreApiExportTest {
         observed.stream().filter(item -> Boolean.FALSE.equals(item.get("core")) && item.containsKey("operationId"))
                 .forEach(item -> selected.add(item.get("method") + " " + item.get("path")));
         assertEquals(selected, exported);
-        assertEquals(50, exported.size());
+        assertEquals(72, exported.size());
+        assertEquals(20, exported.stream().filter(route -> route.contains("/publications") || route.equals("GET /p/{shareCode}")).count());
         assertTrue(exported.contains("POST /knowledge/question/{id}/approve"));
         assertFalse(exported.contains("GET /knowledge/question/list"));
         Path root = projectRoot();
@@ -154,6 +155,7 @@ class CoreApiExportTest {
         assertUniqueOperationParameters(exportedSpec);
         assertBooleanQueryParameters(exportedSpec, false);
         assertInternalParameterShapes(exportedSpec);
+        assertPublicationContracts(exportedSpec);
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("serviceId", "knowledge");
         envelope.put("sourceKind", "registered-mappings");
@@ -178,6 +180,28 @@ class CoreApiExportTest {
                         + " duplicates parameter " + identity + " at " + method.getKey() + " " + path.getKey());
             });
         }));
+    }
+
+    private static void assertPublicationContracts(JsonNode spec) {
+        Set<String> anonymous = new java.util.HashSet<>();
+        spec.path("paths").properties().forEach(path -> path.getValue().properties().forEach(method -> {
+            JsonNode operation = method.getValue();
+            if (!"anonymous".equals(operation.path("x-kb-permission-rule").asText())) { return; }
+            assertEquals("get", method.getKey());
+            assertTrue(operation.has("security"));
+            assertEquals(0, operation.path("security").size());
+            anonymous.add(operation.path("operationId").asText());
+            assertTrue(operation.path("responses").has("404"));
+        }));
+        assertEquals(Set.of("publication.publicGet", "publication.publicMaterials", "publication.publicRelations",
+                "publication.publicAsset", "publication.publicPage"), anonymous);
+        JsonNode page = spec.at("/paths/~1knowledge~1publications/get/parameters");
+        Set<String> names = new java.util.HashSet<>();
+        page.forEach(parameter -> names.add(parameter.path("name").asText()));
+        assertEquals(Set.of("keyword", "status", "outlineId", "kpId", "pageNum", "pageSize"), names);
+        JsonNode command = spec.at("/components/schemas/com.ruoyi.knowledge.publication.PublicationModels.Command");
+        assertEquals("string", command.at("/properties/expectedRowVersion/type").asText());
+        assertFalse(command.path("additionalProperties").asBoolean(true));
     }
 
     private void assertBooleanQueryParameters(JsonNode spec, boolean published) throws Exception {
@@ -212,7 +236,7 @@ class CoreApiExportTest {
 
     private static Set<String> booleanQueryNames(java.lang.reflect.Method method, CoreApi marker) throws Exception {
         Set<String> names = new java.util.HashSet<>();
-        if (marker.shape() == CoreApi.Shape.PAGE) { names.add("reasonable"); }
+        if (marker.shape() == CoreApi.Shape.PAGE && !marker.value().startsWith("publication.")) { names.add("reasonable"); }
         for (var parameter : method.getParameters()) {
             var query = parameter.getAnnotation(org.springframework.web.bind.annotation.RequestParam.class);
             if (query != null && (parameter.getType() == Boolean.class || parameter.getType() == boolean.class)) {
@@ -553,6 +577,7 @@ class CoreApiExportTest {
                     item.put("contractComplete", marker != null && new CoreApiContracts().complete(marker.value()));
                     if (marker != null) {
                         item.put("operationId", marker.value());
+                        item.put("anonymous", marker.anonymous());
                     }
                     item.put("source", handler.getBeanType().getName() + "#" + handler.getMethod().getName());
                     item.put("sourceFile", sourceFile);

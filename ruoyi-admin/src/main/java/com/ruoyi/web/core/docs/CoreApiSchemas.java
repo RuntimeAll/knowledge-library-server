@@ -15,6 +15,8 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
@@ -73,6 +75,9 @@ public final class CoreApiSchemas {
             for (var component : bean.getRecordComponents()) {
                 fields.put(component.getName(), component.getGenericType());
             }
+        }
+        for (Field field : publicFields(bean)) {
+            fields.putIfAbsent(field.getName(), field.getGenericType());
         }
         fields.forEach((name, fieldType) -> {
             String key = prefix.isEmpty() ? name : prefix + "." + name;
@@ -177,6 +182,9 @@ public final class CoreApiSchemas {
                     }
                 }
             }
+            for (Field field : publicFields(bean)) {
+                if (!field.getType().isPrimitive()) { nullableProperty(model, field.getName()); }
+            }
         } catch (IntrospectionException exception) {
             throw new IllegalStateException("Cannot inspect response nullability " + bean.getName(), exception);
         }
@@ -230,6 +238,7 @@ public final class CoreApiSchemas {
                 collect(argument);
             }
         } else if (type instanceof Class<?> bean && bean.getName().startsWith("com.ruoyi.") && classes.add(bean)) {
+            for (Field field : publicFields(bean)) { collect(field.getGenericType()); }
             for (Method method : bean.getMethods()) {
                 if (isGetter(method) && !method.isAnnotationPresent(JsonIgnore.class)) {
                     collect(method.getGenericReturnType());
@@ -252,6 +261,9 @@ public final class CoreApiSchemas {
         Schema model = schemas.get(resolved.schema.get$ref().substring("#/components/schemas/".length()));
         if (model == null || model.getProperties() == null) {
             return;
+        }
+        for (Field field : publicFields(bean)) {
+            patchProperty(model, field.getName(), field.getGenericType(), field);
         }
         try {
             for (PropertyDescriptor property : Introspector.getBeanInfo(bean).getPropertyDescriptors()) {
@@ -285,7 +297,8 @@ public final class CoreApiSchemas {
     private void patchRequestBoundary(Class<?> bean, Schema model) {
         // These records explicitly reject unknown JSON members through JsonAnySetter.
         if (bean.getName().startsWith("com.ruoyi.knowledge.importing.dto.KbRecordsRequest")
-                || bean == com.ruoyi.knowledge.html.HtmlMetadata.class) {
+                || bean == com.ruoyi.knowledge.html.HtmlMetadata.class
+                || bean == com.ruoyi.knowledge.publication.PublicationModels.Command.class) {
             model.setAdditionalProperties(false);
         }
         List<String> nullable = switch (bean.getSimpleName()) {
@@ -317,6 +330,16 @@ public final class CoreApiSchemas {
                 && parameterized.getActualTypeArguments()[0] == Long.class) {
             model.addProperty(name, new ArraySchema().items(new StringSchema()).description(property.getDescription()));
         }
+    }
+
+    private static List<Field> publicFields(Class<?> bean) {
+        return java.util.Arrays.stream(bean.getFields())
+                .filter(field -> !Modifier.isStatic(field.getModifiers()) && !field.isSynthetic()
+                        && !field.isAnnotationPresent(JsonIgnore.class))
+                .filter(field -> java.util.Arrays.stream(bean.getMethods()).noneMatch(method ->
+                        isGetter(method) && method.getName().equals("get"
+                                + Character.toUpperCase(field.getName().charAt(0)) + field.getName().substring(1))))
+                .toList();
     }
 
     private static boolean isGetter(Method method) {
