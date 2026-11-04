@@ -108,6 +108,20 @@ class KbAssetServiceTest {
         verifyNoInteractions(storage);
     }
 
+    @Test void publicationZipSigningDoesNotWidenPreviewOrSignForeignAssets() {
+        KbAsset archive = asset(new byte[]{1, 2}, "READY"); archive.setPurpose("IMPORT_RESOURCE");
+        archive.setContentType("application/zip"); archive.setOssVersionId("version-7");
+        when(mapper.selectByIdForUpdate(8L)).thenReturn(archive);
+        when(storage.previewUrl("fixture-bucket", archive.getObjectKey(), "version-7", 600)).thenReturn("https://oss.invalid/signed");
+        assertEquals(600, service.publicationDownload(8L).expiresInSeconds());
+        assertThrows(ServiceException.class, () -> service.preview(8L));
+        archive.setContentType("text/html"); assertThrows(ServiceException.class, () -> service.publicationDownload(8L));
+        archive.setContentType("application/zip"); archive.setPurpose("PRODUCT_ORIGINAL"); assertThrows(ServiceException.class, () -> service.publicationDownload(8L));
+        archive.setPurpose("IMPORT_RESOURCE"); archive.setObjectKey("another-project/file.zip"); assertThrows(ServiceException.class, () -> service.publicationDownload(8L));
+        archive.setObjectKey("knowledge-library/bundle.zip"); archive.setBucketName("other-bucket"); assertThrows(ServiceException.class, () -> service.publicationDownload(8L));
+        verify(storage, times(1)).previewUrl(anyString(), anyString(), anyString(), anyInt());
+    }
+
     private KbAsset asset(byte[] bytes, String status) {
         KbAsset asset = new KbAsset();
         asset.setAssetId(8L);

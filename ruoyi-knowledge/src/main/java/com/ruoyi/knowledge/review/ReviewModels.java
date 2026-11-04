@@ -52,10 +52,22 @@ public final class ReviewModels {
     public record ApprovalEvidence(String operationId, String questionId, String rowVersion, String contentHash,
             String policyVersion, String actor, String reason, String granularityExceptionId, List<Fact> facts, List<Evidence> evidence) { }
     public record Approval(String questionId, String rowVersion, String contentHash, List<Fact> facts) { }
+    public record PublicationContext(
+            @NotNull @JsonFormat(shape = JsonFormat.Shape.STRING) Long publicationId,
+            @NotNull @JsonFormat(shape = JsonFormat.Shape.STRING) Long expectedRowVersion) { }
+    public record PublicationApprovalResult(String mode, Readiness readiness, ApprovalEvidence evidence) { }
+    public record PublicationOperationEvidence(Prepared prepared, Terminal terminal) { }
+    public record PublicationLineageEvidence(String bindingId, List<String> sourceIds, List<String> occurrenceIds) { }
     public record ExceptionCommand(String operationId, String reason,
             @JsonFormat(shape = JsonFormat.Shape.STRING) Long questionId,
             @JsonFormat(shape = JsonFormat.Shape.STRING) Long expectedRowVersion,
-            String runId, String candidateKey, String candidateHash) { }
+            String runId, String candidateKey, String candidateHash,
+            @jakarta.validation.Valid PublicationContext publicationContext) {
+        public ExceptionCommand(String operationId, String reason, Long questionId, Long expectedRowVersion,
+                String runId, String candidateKey, String candidateHash) {
+            this(operationId, reason, questionId, expectedRowVersion, runId, candidateKey, candidateHash, null);
+        }
+    }
     public record GranularityException(String operationId, String exceptionId, String questionId,
             String rowVersion, String clientKey, String candidateHash, String contentHash,
             int itemCount, String policyVersion, String actor, String reason, String sourceId,

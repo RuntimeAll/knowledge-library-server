@@ -15,6 +15,8 @@ import com.ruoyi.knowledge.mapper.KbQuestionMapper;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** Candidate quantity proofs and committed import bindings; they never grant READY. */
 @Service
@@ -27,6 +29,7 @@ public class KbReviewProofs {
     private final KbRecordHtmlConverter converter;
     private final KbHtmlCodec codec;
     private final KbReviewLineage lineage;
+    private ObjectProvider<PublicationReviewContextValidator> publicationValidators;
 
     public KbReviewProofs(KbReviewLedger ledger, KbReviewGate gate, KbReviewMapper mapper,
             KbQuestionMapper questions, KbCandidateProxy candidates, KbRecordHtmlConverter converter, KbHtmlCodec codec) {
@@ -40,6 +43,11 @@ public class KbReviewProofs {
         this.lineage = new KbReviewLineage(ledger, mapper, questions);
     }
 
+    @Autowired
+    public void setPublicationValidators(ObjectProvider<PublicationReviewContextValidator> validators) {
+        publicationValidators = validators;
+    }
+
     public ReviewModels.GranularityException grant(ReviewModels.ExceptionCommand command) {
         if (command == null || command.operationId() == null || command.operationId().isBlank()
                 || command.operationId().length() > 128 || command.reason() == null || command.reason().isBlank()
@@ -47,6 +55,7 @@ public class KbReviewProofs {
         if ((command.questionId() == null) == (command.runId() == null)) { throw new ServiceException("已有题目和未入库候选身份必须二选一", 400); }
         gate.enter();
         try {
+            publicationPolicy(command);
             if (ledger.prepared(command.operationId()) != null) { throw new ServiceException("Operation identity already used",409); }
             ReviewModels.GranularityException previous = ledger.exception(command.operationId());
             if (previous != null) {
@@ -58,6 +67,7 @@ public class KbReviewProofs {
         KbCandidateProxy.Candidate candidate = command.questionId() == null ? candidates.get(command.runId(), command.candidateKey()) : null;
         gate.enter();
         try {
+            String policy = publicationPolicy(command);
             if (ledger.operations().stream().anyMatch(p -> ledger.terminal(p.operationId()) == null))
                 { throw new ServiceException("有未决审核操作，须先同键对账", 503); }
             ReviewModels.GranularityException proof;
@@ -68,13 +78,12 @@ public class KbReviewProofs {
                     { throw new ServiceException("数量例外须针对当前草稿版本", 409); }
                 int count = count(question);
                 requireSmallCalculation(question.getQuestionType(), count);
-                if (!ReviewContentChecks.completeAnswer(question.getStemHtml(), question.getAnswerHtml(),
-                        "GROUP".equals(question.getUnitKind())))
+                if (!ReviewPolicies.exceptionAnswerValid(question, policy))
                     { throw new ServiceException("数量例外必须展示完整解答", 409); }
                 String content = KbQuestionFingerprint.content(question);
                 proof = new ReviewModels.GranularityException(command.operationId(), command.operationId(),
                         question.getId().toString(), question.getRowVersion().toString(), null, null, content, count,
-                        KbReviewService.POLICY, SecurityUtils.getUsername(), command.reason(), null, null, basis(question), requestHash(command), null);
+                        policy, SecurityUtils.getUsername(), command.reason(), null, null, basis(question), requestHash(command), null);
             }
             ledger.saveException(proof);
             return proof;
@@ -111,7 +120,7 @@ public class KbReviewProofs {
         if (!"CALCULATION".equals(question.getQuestionType()) || count >= 3) { return; }
         if (question.getGranularityExceptionId() == null) { throw new ServiceException("计算练习不足3个完整小题，须先申请专项数量例外", 409); }
         ReviewModels.GranularityException proof = ledger.exception(question.getGranularityExceptionId());
-        if (proof == null || proof.questionId() != null || !KbReviewService.POLICY.equals(proof.policyVersion())
+        if (proof == null || proof.questionId() != null || !ReviewPolicies.supported(proof.policyVersion())
                 || !Objects.equals(proof.clientKey(), question.getImportClientKey())
                 || !Objects.equals(proof.articleHash(), question.getCandidateArticleHash())
                 || !Objects.equals(proof.sourceId(), question.getImportSourceId() == null ? null : question.getImportSourceId().toString())
@@ -122,7 +131,7 @@ public class KbReviewProofs {
         String content = KbQuestionFingerprint.content(question);
         String basis = basis(question);
         for (ReviewModels.GranularityException proof : ledger.exceptions()) {
-            if (!KbReviewService.POLICY.equals(proof.policyVersion())) { continue; }
+            if (!ReviewPolicies.supported(proof.policyVersion())) { continue; }
             if (Objects.equals(proof.questionId(), question.getId().toString())
                     && Objects.equals(proof.rowVersion(), question.getRowVersion().toString())
                     && Objects.equals(proof.contentHash(), content) && Objects.equals(proof.basisHash(), basis)) { return proof; }
@@ -133,7 +142,7 @@ public class KbReviewProofs {
                     || !Objects.equals(binding.contentHash(), content)
                     || mapper.importIdentityMatches(binding) != 1) { continue; }
             ReviewModels.GranularityException proof = ledger.exception(binding.granularityExceptionId());
-            if (proof != null && KbReviewService.POLICY.equals(proof.policyVersion())
+            if (proof != null && ReviewPolicies.supported(proof.policyVersion())
                     && new KbReviewCandidateBinding(mapper).factsMatch(binding, proof, question, mapper.facts(question.getId()))) { return proof; }
         }
         return null;
@@ -151,6 +160,14 @@ public class KbReviewProofs {
 
     public boolean derivedEvidence(KbQuestion child) {
         return lineage.validBinding(child) != null;
+    }
+
+    ReviewModels.PublicationLineageEvidence publicationLineage(Long questionId) {
+        KbQuestion question = fullQuestion(questionId);
+        if (!"DERIVED".equals(question.getCreationKind())) { return null; }
+        ReviewModels.PublicationLineageEvidence value = lineage.publicationEvidence(question);
+        if (value == null) { throw new ServiceException("派生题缺少有效冻结来源证据", 409); }
+        return value;
     }
 
     public List<ReviewModels.Evidence> evidence(KbQuestion question, ReviewModels.GranularityException exception) {
@@ -175,7 +192,7 @@ public class KbReviewProofs {
     public KbCandidateProxy.Candidate candidate(String runId, String key) {
         KbCandidateProxy.Candidate value = candidates.get(runId, key);
         ReviewModels.GranularityException receipt = ledger.exceptions().stream().filter(proof ->
-                KbReviewService.POLICY.equals(proof.policyVersion()) && Objects.equals(proof.candidateHash(), value.candidateHash())
+                ReviewPolicies.supported(proof.policyVersion()) && Objects.equals(proof.candidateHash(), value.candidateHash())
                 && Objects.equals(proof.clientKey(), value.clientKey())).findFirst().orElse(null);
         return new KbCandidateProxy.Candidate(value.schemaVersion(),value.runId(),value.groupKey(),value.role(),
                 value.ownerUsername(),value.instanceId(),value.candidateKey(),value.candidateRevision(),value.clientKey(),
@@ -183,9 +200,29 @@ public class KbReviewProofs {
                 value.evidenceRefs(),value.createdAt(),value.workerKind(),value.current(),receipt);
     }
 
-    private static String requestHash(ReviewModels.ExceptionCommand command) {
-        return KbReviewLedger.hash(JSON.toJSONBytes(List.of(SecurityUtils.getUsername(),command)));
+    private String publicationPolicy(ReviewModels.ExceptionCommand command) {
+        if (command.publicationContext() == null) { return ReviewPolicies.STANDARD; }
+        KbPublicationReviewBridge.validateContext(command.publicationContext(), command.questionId());
+        if (command.runId() != null || command.candidateKey() != null || command.candidateHash() != null)
+            { throw new ServiceException("发布数量例外只适用于当前题单中的已入库题目", 400); }
+        if (!SecurityUtils.hasPermi("knowledge:question:granularityException")
+                || !SecurityUtils.hasPermi("knowledge:publication:check"))
+            { throw new ServiceException("发布数量例外须具备题目例外及发布自检权限", 403); }
+        PublicationReviewContextValidator validator = publicationValidators == null ? null : publicationValidators.getIfAvailable();
+        if (validator == null) { throw new ServiceException("发布上下文校验尚未配置", 503); }
+        validator.validateException(command.publicationContext(), command.questionId());
+        return ReviewPolicies.PUBLICATION;
     }
+
+    private static String requestHash(ReviewModels.ExceptionCommand command) {
+        Object identity = command.publicationContext() == null
+                ? new LegacyExceptionIdentity(command.operationId(), command.reason(), command.questionId(),
+                        command.expectedRowVersion(), command.runId(), command.candidateKey(), command.candidateHash()) : command;
+        return KbReviewLedger.hash(JSON.toJSONBytes(List.of(SecurityUtils.getUsername(), identity)));
+    }
+
+    private record LegacyExceptionIdentity(String operationId, String reason, Long questionId,
+            Long expectedRowVersion, String runId, String candidateKey, String candidateHash) { }
 
     private KbQuestion fullQuestion(Long id) {
         KbQuestion q = questions.selectById(id);

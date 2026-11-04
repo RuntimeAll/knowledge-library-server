@@ -64,6 +64,39 @@ final class KbReviewLineage {
         return null;
     }
 
+    ReviewModels.PublicationLineageEvidence publicationEvidence(KbQuestion child) {
+        ReviewModels.ImportBinding root = validBinding(child);
+        if (root == null) { return null; }
+        Map<String, ReviewModels.ImportBinding> bindings = new HashMap<>();
+        for (ReviewModels.ImportBinding value : ledger.bindings()) { bindings.put(value.bindingId(), value); }
+        Set<String> sources = new java.util.TreeSet<>(java.util.Comparator.comparingLong(Long::parseLong));
+        Set<String> occurrences = new java.util.TreeSet<>(java.util.Comparator.comparingLong(Long::parseLong));
+        collectFrozenSources(root, bindings, new HashSet<>(), sources, occurrences, 0);
+        return new ReviewModels.PublicationLineageEvidence(root.bindingId(), List.copyOf(sources), List.copyOf(occurrences));
+    }
+
+    private void collectFrozenSources(ReviewModels.ImportBinding binding,
+            Map<String, ReviewModels.ImportBinding> bindings, Set<String> visited,
+            Set<String> sources, Set<String> occurrences, int depth) {
+        if (depth > MAX_DEPTH || visited.size() > MAX_NODES) { throw new ServiceException("冻结血缘超过读取边界", 409); }
+        if (!visited.add(binding.bindingId())) { return; }
+        List<ReviewModels.ParentFreeze> parents = binding.parentFreezes() == null
+                ? List.of(binding.parentFreeze()) : binding.parentFreezes();
+        for (ReviewModels.ParentFreeze parent : parents) {
+            for (ReviewModels.Fact fact : parent.facts()) {
+                if ("SOURCE".equals(fact.kind())) { sources.add(fact.identity()); }
+                if ("OCCURRENCE".equals(fact.kind())) { occurrences.add(fact.identity()); }
+            }
+            ReviewModels.Prepared approved = ledger.prepared(parent.approvalOperationId());
+            for (ReviewModels.Evidence evidence : approved.evidence() == null ? List.<ReviewModels.Evidence>of() : approved.evidence()) {
+                if (!"BINDING".equals(evidence.kind())) { continue; }
+                ReviewModels.ImportBinding ancestor = bindings.get(evidence.identity());
+                if (ancestor == null) { throw new ServiceException("冻结血缘记录不可读取", 503); }
+                collectFrozenSources(ancestor, bindings, visited, sources, occurrences, depth + 1);
+            }
+        }
+    }
+
     /** Deliberately performs no SQL: safe before PageHelper's first count/page statement. */
     boolean evidenceValid(ReviewModels.Prepared prepared) {
         return validEvidence(prepared, new Traversal(false), 0);
@@ -156,7 +189,7 @@ final class KbReviewLineage {
     }
 
     private boolean confirmedApproval(ReviewModels.Prepared value) {
-        return value != null && "APPROVE".equals(value.action()) && KbReviewService.POLICY.equals(value.policyVersion())
+        return value != null && "APPROVE".equals(value.action()) && ReviewPolicies.supported(value.policyVersion())
                 && "READY".equals(value.after().status()) && confirmed(value);
     }
 
