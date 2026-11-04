@@ -86,12 +86,26 @@ public class PublicationSupport {
     public String deliveryMode() { return properties.getDeliveryMode().name(); }
     public String publicUrl(String code) {
         if (properties.getDeliveryMode() != PublicationProperties.DeliveryMode.PUBLIC_PAGE) { return null; }
-        String base = properties.getPublicBaseUrl();
-        if (base == null || !base.matches("https://[^/]+/?")) {
-            throw fail(503, "GENERATION_FAILED", "尚未配置HTTPS公开入口");
-        }
-        return base.replaceAll("/$", "") + "/p/" + code;
+        return publicOrigin() + "/p/" + code;
     }
+    private String publicOrigin() {
+        try {
+            String base = properties.getPublicBaseUrl();
+            java.net.URI uri = new java.net.URI(base == null ? "" : base);
+            boolean protocol = "https".equals(uri.getScheme())
+                    || (properties.isAllowHttp() && "http".equals(uri.getScheme()));
+            if (!protocol || uri.getHost() == null || uri.getUserInfo() != null
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null
+                    || !(uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath()))
+                    || uri.getPort() == 0 || uri.getPort() > 65535) {
+                throw new java.net.URISyntaxException(base == null ? "" : base, "invalid origin");
+            }
+            return uri.getScheme() + "://" + uri.getRawAuthority();
+        } catch (java.net.URISyntaxException e) {
+            throw fail(503, "GENERATION_FAILED", "请配置有效在线入口；HTTP入口需显式启用allow-http");
+        }
+    }
+
     public static PublicationException fail(int code, String key, String message) {
         return new PublicationException(code, key, message);
     }

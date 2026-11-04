@@ -54,7 +54,7 @@ public class PublicationService {
         List<Summary> items = mapper.list(query);
         for (Summary item : items) {
             item.deliveryMode = support.deliveryMode();
-            if ("ON_SALE".equals(item.status) && "READY".equals(item.shareState) && item.shareCode != null) { item.shareUrl = support.publicUrl(item.shareCode); }
+            if ("ON_SALE".equals(item.status) && "READY".equals(item.shareState) && item.shareCode != null && "text/html".equals(item.shareContentType)) { item.shareUrl = support.publicUrl(item.shareCode); }
         }
         return new Page<>(items, mapper.count(query));
     }
@@ -69,7 +69,11 @@ public class PublicationService {
         out.createTime = row.createTime; out.updateTime = row.updateTime;
         out.productCount = out.products.size(); out.imageCount = out.images.size();
         out.questionCount = (int) out.products.stream().flatMap(p -> p.questions.stream()).map(q -> q.questionId).distinct().count();
-        out.shareUrl = shareUrl(row); out.latestCheck = checkView(mapper.latestCheck(row.id));
+        out.shareUrl = shareUrl(row);
+        if ("PUBLIC_PAGE".equals(out.deliveryMode) && "READY".equals(row.shareState) && !"text/html".equals(row.shareContentType)) {
+            out.missingItems.add(new Issue("ONLINE_PAGE_REQUIRED", "shareState", null, null, "旧发布包不能作为在线页，请撤回后重新发售生成页面"));
+        }
+        out.latestCheck = checkView(mapper.latestCheck(row.id));
         out.latestOperation = receipt(row, mapper.latestOperation(row.id));
         out.relationsSummary = relationSummary(row, out.latestCheck);
         out.permissions = new AllowedActions(support.has("edit") && "PREPARING".equals(row.status),
@@ -239,7 +243,7 @@ public class PublicationService {
         r.deliveryMode = support.deliveryMode(); r.shareState = row.shareState; r.shareUrl = shareUrl(row); return r;
     }
     public String shareUrl(Publication row) {
-        return "ON_SALE".equals(row.status) && "READY".equals(row.shareState) && row.shareCode != null
+        return "ON_SALE".equals(row.status) && "READY".equals(row.shareState) && row.shareCode != null && "text/html".equals(row.shareContentType)
                 ? support.publicUrl(row.shareCode) : null;
     }
     public static RelationQuery scope(Long publicationId, CheckResult check) {

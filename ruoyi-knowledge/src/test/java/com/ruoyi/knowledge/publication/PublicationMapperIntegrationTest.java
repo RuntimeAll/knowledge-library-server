@@ -69,6 +69,14 @@ class PublicationMapperIntegrationTest {
             try (var statement = session.getConnection().createStatement(); var rs = statement.executeQuery("SELECT id FROM kb_question ORDER BY id LIMIT 1")) {
                 assertTrue(rs.next(), "isolated fixture must contain a question"); questionId = rs.getLong(1);
             }
+            var productAsset = mapper.productFacts(java.util.List.of(productId)).get(0);
+            first.rowVersion = mapper.get(first.id).rowVersion;
+            first.shareAssetId = productAsset.assetId;
+            assertEquals(1, mapper.updatePublication(first));
+            assertNotNull(mapper.get(first.id).shareContentType, "ready artifact type is read without a detail N+1");
+            query.pageSize = 2;
+            var summary = mapper.list(query).stream().filter(item -> item.id.equals(first.id)).findFirst().orElseThrow();
+            assertEquals(mapper.get(first.id).shareContentType, summary.shareContentType);
             // Verify the real profile join, including its conservative fallback, inside this rollback-only fixture.
             try (var statement = session.getConnection().prepareStatement("UPDATE kb_product_profile SET resource_type = 'COURSEWARE' WHERE product_id = ?")) {
                 statement.setLong(1, productId);

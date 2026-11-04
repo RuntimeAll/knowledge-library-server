@@ -12,6 +12,9 @@ public class PublicationProperties {
     public void setDeliveryMode(DeliveryMode value) { deliveryMode = java.util.Objects.requireNonNull(value); }
     private boolean enabled;
     private String publicBaseUrl;
+    private boolean allowHttp;
+    public boolean isAllowHttp() { return allowHttp; }
+    public void setAllowHttp(boolean value) { allowHttp = value; }
     private Long pageTemplateAssetId;
     private String staticDirectory;
     public String getStaticDirectory() { return staticDirectory; }

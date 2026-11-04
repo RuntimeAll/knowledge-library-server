@@ -62,9 +62,8 @@ public class PublicationPublicService {
         if (kind == null) { throw fail(400, "INVALID_REQUEST", "文本类别必填"); }
         String text = switch (kind) {
             case "TITLE" -> page.postTitle(); case "BODY" -> page.postBody(); case "LISTING_DESCRIPTION" -> page.listingDescription();
-            case "BAIDU" -> page.baiduShares().stream().map(s -> s.files().stream().map(PublicFile::remoteFileName)
-                    .collect(Collectors.joining("、")) + "\n" + s.shareUrl() + (s.extractionCode() == null ? "" : "\n提取码：" + s.extractionCode()))
-                    .collect(Collectors.joining("\n\n"));
+            case "BAIDU" -> page.baiduShares().stream().map(s -> PublicationCopyText.baidu(s.shareUrl(), s.extractionCode(),
+                    s.files().stream().map(PublicFile::remoteFileName).toList())).collect(Collectors.joining("\n\n"));
             default -> throw fail(400, "INVALID_REQUEST", "文本类别无效");
         };
         return new Materials(kind, page.contentVersion(), null, null, text == null ? "" : text);
@@ -165,7 +164,7 @@ public class PublicationPublicService {
                 .map(p -> new PublicProduct(id(p.id), p.title, "第" + p.versionNo + "版", id(p.assetId), p.fileName, p.mimeType, assetUrl(row, p.assetId))).toList();
         List<PublicShare> baidu = input.baiduShares.stream().map(s -> new PublicShare(s.shareUrl, s.extractionCode,
                 s.files.stream().map(f -> new PublicFile(id(f.productId), f.remoteFileName)).toList())).toList();
-        return new PublicPublication(row.shareCode, id(row.contentVersion), row.title, "ON_SALE", row.postTitle, row.postBody,
+        return new PublicPublication(row.shareCode, id(row.contentVersion), row.title, "ON_SALE", row.postTitle, PublicationCopyText.body(row.postBody),
                 row.listingDescription, images, products, baidu, counts(row));
     }
     private RelationCounts counts(Publication row) {

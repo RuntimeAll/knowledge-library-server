@@ -44,6 +44,7 @@ class PublicationPublicGateTest {
         final PublicationMapper mapper = mock(PublicationMapper.class);
         final PublicationReadGate checks = mock(PublicationReadGate.class);
         final IKbAssetService assets = mock(IKbAssetService.class);
+        final PublicationGraph graph = mock(PublicationGraph.class);
         final Publication row = new Publication();
         final PublicationPublicService publicApi;
         Fixture() {
@@ -51,7 +52,7 @@ class PublicationPublicGateTest {
             PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
             when(manager.getTransaction(any(TransactionDefinition.class))).thenReturn(new SimpleTransactionStatus());
             PublicationSupport support = new PublicationSupport(manager, new KbReviewGate(), properties);
-            PublicationService service = new PublicationService(mapper, support, mock(PublicationGraph.class), mock(KbAgentSubmissionMapper.class));
+            PublicationService service = new PublicationService(mapper, support, graph, mock(KbAgentSubmissionMapper.class));
             row.id = 1L; row.rowVersion = 1L; row.contentVersion = 1L; row.sharedContentVersion = 1L;
             row.status = "ON_SALE"; row.shareState = "READY"; row.shareCode = "a".repeat(32); row.lastSaleOperationId = 3L;
             when(mapper.byCode(row.shareCode)).thenReturn(row);

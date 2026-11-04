@@ -29,6 +29,7 @@ public final class PublicationRows {
         public String legacySaleStatus;
         public Date legacySoldAt;
         public String shareCode;
+        public String shareContentType;
         public String shareState;
         @JsonFormat(shape = JsonFormat.Shape.STRING)
         public Long shareAssetId;

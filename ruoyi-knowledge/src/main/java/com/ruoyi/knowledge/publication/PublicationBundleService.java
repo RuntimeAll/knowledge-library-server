@@ -65,7 +65,7 @@ public class PublicationBundleService {
                 files.add(new FileFact(path, id(image.assetId), bytes.length, asset.getSha256(), image.caption));
             }
             total += addText(zip, output, files, "标题.txt", text(input.postTitle));
-            total += addText(zip, output, files, "正文.txt", text(input.postBody));
+            total += addText(zip, output, files, "正文.txt", text(PublicationCopyText.body(input.postBody)));
             total += addText(zip, output, files, "商品上架描述.txt", text(input.listingDescription));
             total += addText(zip, output, files, "百度网盘信息.txt", baidu(input));
             total += addText(zip, output, files, "index.html", PublicationOfflinePage.render(input, files));
@@ -89,10 +89,10 @@ public class PublicationBundleService {
         zip.putNextEntry(entry); zip.write(bytes); zip.closeEntry();
     }
     static String baidu(Input input) {
-        return input.baiduShares.stream().map(s -> s.files.stream().map(f -> f.remoteFileName).collect(java.util.stream.Collectors.joining("、"))
-                + "\n" + s.shareUrl + (s.extractionCode == null ? "" : "\n提取码：" + s.extractionCode))
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+        return input.baiduShares.stream().map(s -> PublicationCopyText.baidu(s.shareUrl, s.extractionCode,
+                s.files.stream().map(f -> f.remoteFileName).toList())).collect(java.util.stream.Collectors.joining("\n\n"));
     }
+
     static String text(String value) { return value == null ? "" : value; }
     private static String extension(String type) {
         return switch (type) { case "image/png" -> ".png"; case "image/jpeg" -> ".jpg";

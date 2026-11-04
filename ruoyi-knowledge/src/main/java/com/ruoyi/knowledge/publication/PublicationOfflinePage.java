@@ -21,7 +21,7 @@ final class PublicationOfflinePage {
                     .append(" <a download href=\"").append(file.path()).append("\">保存</a></figcaption></figure>"); }
         }
         html.append("</div><p class=hint>图片文件已全部包含在images目录；下载包不代表已保存到相册。</p></section><section id=text hidden><h2>发布文案</h2>");
-        block(html, "标题", "title", input.postTitle); block(html, "正文", "body", input.postBody);
+        block(html, "标题", "title", input.postTitle); block(html, "正文", "body", PublicationCopyText.body(input.postBody));
         block(html, "商品上架描述", "description", input.listingDescription); block(html, "百度网盘信息", "baidu", PublicationBundleService.baidu(input));
         html.append("""
                 <p class=hint>五类关联的ID与版本快照见manifest.json；实时关系请在知识库后台查看。</p></section><p id=message class=copy-status role=status></p>

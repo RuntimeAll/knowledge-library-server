@@ -53,14 +53,14 @@ public class PublicationShareService {
     }
     private PublicationOperation generateLocked(Long id, Long saleId) {
         PublicationOperation op = service.support.gated(() -> prepare(id, saleId));
+        Snapshot generation = service.support.decode(op.snapshotJson, Snapshot.class);
+        String mode = generation.deliveryMode() == null ? "PUBLIC_PAGE" : generation.deliveryMode();
+        if (!Objects.equals(mode, service.support.deliveryMode())) {
+            throw fail(409, "STATE_CONFLICT", "交付模式已变化，请撤回后重新发售生成在线页");
+        }
         if ("SUCCEEDED".equals(op.status)) { return op; }
         try {
             String code = reserveCode(id, saleId, op.contentVersion);
-            Snapshot generation = service.support.decode(op.snapshotJson, Snapshot.class);
-            String mode = generation.deliveryMode() == null ? "PUBLIC_PAGE" : generation.deliveryMode();
-            if (!Objects.equals(mode, service.support.deliveryMode())) {
-                throw fail(409, "STATE_CONFLICT", "交付模式已变化，请恢复原模式重试或撤回后重新发售");
-            }
             KbAsset page = "OSS_DOWNLOAD".equals(mode) ? bundles.create(id, op) : createPage(id, code, op);
             final String finalCode = code;
             service.support.gated(() -> {
@@ -74,6 +74,7 @@ public class PublicationShareService {
                 Publication current = service.lock(id); assertCurrent(current, saleId, op.contentVersion);
                 if (!Objects.equals(observed.rowVersion, current.rowVersion)) { throw fail(409, "VERSION_CONFLICT", "资料在生成期间发生变化"); }
                 current.shareCode = finalCode; current.shareAssetId = page.getAssetId(); current.shareState = "READY";
+                current.shareContentType = "OSS_DOWNLOAD".equals(mode) ? "application/zip" : "text/html";
                 current.sharedContentVersion = current.contentVersion; service.support.updated(current);
                 PublicationService.changed(service.mapper.updatePublication(current)); current.rowVersion++;
                 op.status = "SUCCEEDED"; op.finishedAt = new Date(); op.errorCode = null; op.errorMessage = null;
@@ -126,6 +127,11 @@ public class PublicationShareService {
         assertCurrent(row, saleId, sale.contentVersion);
         PublicationOperation existing = service.mapper.operation(id, "generate:" + saleId);
         if (existing != null) {
+            Snapshot previous = service.support.decode(existing.snapshotJson, Snapshot.class);
+            String previousMode = previous.deliveryMode() == null ? "PUBLIC_PAGE" : previous.deliveryMode();
+            if (!Objects.equals(previousMode, service.support.deliveryMode())) {
+                throw fail(409, "STATE_CONFLICT", "交付模式已变化，请撤回后重新发售生成在线页");
+            }
             if (!"SUCCEEDED".equals(existing.status)) {
                 if (!service.support.sameActor(existing)) { throw fail(403, "FORBIDDEN", "只有原生成者可继续交付生成"); }
                 existing.attemptCount++; existing.status = "PENDING";

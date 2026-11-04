@@ -105,6 +105,7 @@ public final class PublicationModels {
         public String shareState;
         public String shareUrl;
         @com.fasterxml.jackson.annotation.JsonIgnore public String shareCode;
+        @com.fasterxml.jackson.annotation.JsonIgnore public String shareContentType;
         public int productCount;
         public int imageCount;
         public int questionCount;
