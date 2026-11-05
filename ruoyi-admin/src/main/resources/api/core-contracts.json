@@ -12418,7 +12418,7 @@
       "permissionRule": "@ss.hasPermi('knowledge:publication:add')",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。",
+        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "登记类键按账号作用域保存；状态/发售按本资料操作键及完整请求核对，改参冲突。SALE继续批准另验证原操作者身份。",
         "concurrency": "写入校验 rowVersion；自检及发售另核对 contentVersion、题目批准前/后版本与依赖摘要。公开读取逐请求验证当前版本。",
         "partialSuccess": "SALE 全部题目有效才成功；独立批准不能用数据库事务回滚文件账册，局部批准后资料仍准备中。链接生成单独回执，不冒充发售或生成成功。",
@@ -12542,7 +12542,11 @@
             "items": [],
             "missingItems": []
           },
-          "deliveryMode": "PUBLIC_PAGE"
+          "deliveryMode": "PUBLIC_PAGE",
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "failureExample": {
@@ -12565,7 +12569,11 @@
           "products": [],
           "referenceSources": [],
           "images": [],
-          "baiduShares": []
+          "baiduShares": [],
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "parameterDescriptions": {
@@ -12781,7 +12789,11 @@
         "data.products[].contentUrl": "逐请求门禁的成品文件地址。",
         "data.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
         "data.latestOperation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
-        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。"
+        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
+        "publication.topicKeywords": "可选有序纯关键词数组，最多20项/每项80字符；不含#、换行、空项或重复。新建空；修改省略/null保留，[]清空，不拼入正文。",
+        "publication.topicKeywords[]": "单个纯关键词；显示时可加#，复制不含#，须在小红书原生候选中点选后才绑定。",
+        "data.topicKeywords": "独立有序纯关键词数组；旧记录为[]，不是平台topicId或绑定结果。",
+        "data.topicKeywords[]": "单个关键词；逐条复制只含关键词，不带#。"
       }
     },
     "publication.list": {
@@ -12798,7 +12810,7 @@
       "permissionRule": "@ss.hasPermi('knowledge:publication:list')",
       "invocationRules": {
         "pagination": "服务端分页，默认20、最大100；固定排序，越界返回空页。",
-        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。",
+        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "只读可重复调用。",
         "concurrency": "写入校验 rowVersion；自检及发售另核对 contentVersion、题目批准前/后版本与依赖摘要。公开读取逐请求验证当前版本。",
         "partialSuccess": "SALE 全部题目有效才成功；独立批准不能用数据库事务回滚文件账册，局部批准后资料仍准备中。链接生成单独回执，不冒充发售或生成成功。",
@@ -12886,7 +12898,8 @@
             "questionCount": 0,
             "createTime": "2026-10-30T00:00:00.000Z",
             "updateTime": "2026-10-30T00:00:00.000Z",
-            "deliveryMode": "PUBLIC_PAGE"
+            "deliveryMode": "PUBLIC_PAGE",
+            "topicKeywords": []
           }
         ],
         "total": 1
@@ -13020,7 +13033,9 @@
         "data.operation.total": "所选图片数量。",
         "data.operation.text": "按 scope 返回完整可复制文案；展示压缩不截断复制结果。",
         "rows[].deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
-        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。"
+        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
+        "rows[].topicKeywords": "当前页每份资料的独立有序纯关键词；旧记录[]，批量读取，不查询逐行详情。",
+        "rows[].topicKeywords[]": "单个纯关键词。"
       }
     },
     "publication.get": {
@@ -13037,7 +13052,7 @@
       "permissionRule": "@ss.hasPermi('knowledge:publication:query')",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。",
+        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "只读可重复调用。",
         "concurrency": "写入校验 rowVersion；自检及发售另核对 contentVersion、题目批准前/后版本与依赖摘要。公开读取逐请求验证当前版本。",
         "partialSuccess": "SALE 全部题目有效才成功；独立批准不能用数据库事务回滚文件账册，局部批准后资料仍准备中。链接生成单独回执，不冒充发售或生成成功。",
@@ -13153,7 +13168,11 @@
             "items": [],
             "missingItems": []
           },
-          "deliveryMode": "PUBLIC_PAGE"
+          "deliveryMode": "PUBLIC_PAGE",
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "failureExample": {
@@ -13341,7 +13360,9 @@
         "data.products[].contentUrl": "逐请求门禁的成品文件地址。",
         "data.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
         "data.latestOperation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
-        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。"
+        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
+        "data.topicKeywords": "独立有序纯关键词数组；旧记录为[]，不是平台topicId或绑定结果。",
+        "data.topicKeywords[]": "单个关键词；逐条复制只含关键词，不带#。"
       }
     },
     "publication.update": {
@@ -13358,7 +13379,7 @@
       "permissionRule": "@ss.hasPermi('knowledge:publication:edit')",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。",
+        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "登记类键按账号作用域保存；状态/发售按本资料操作键及完整请求核对，改参冲突。SALE继续批准另验证原操作者身份。",
         "concurrency": "写入校验 rowVersion；自检及发售另核对 contentVersion、题目批准前/后版本与依赖摘要。公开读取逐请求验证当前版本。",
         "partialSuccess": "SALE 全部题目有效才成功；独立批准不能用数据库事务回滚文件账册，局部批准后资料仍准备中。链接生成单独回执，不冒充发售或生成成功。",
@@ -13482,7 +13503,11 @@
             "items": [],
             "missingItems": []
           },
-          "deliveryMode": "PUBLIC_PAGE"
+          "deliveryMode": "PUBLIC_PAGE",
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "failureExample": {
@@ -13506,7 +13531,11 @@
           "products": [],
           "referenceSources": [],
           "images": [],
-          "baiduShares": []
+          "baiduShares": [],
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         },
         "contentVersion": "1"
       },
@@ -13724,7 +13753,11 @@
         "data.products[].contentUrl": "逐请求门禁的成品文件地址。",
         "data.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
         "data.latestOperation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
-        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。"
+        "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
+        "publication.topicKeywords": "可选有序纯关键词数组，最多20项/每项80字符；不含#、换行、空项或重复。新建空；修改省略/null保留，[]清空，不拼入正文。",
+        "publication.topicKeywords[]": "单个纯关键词；显示时可加#，复制不含#，须在小红书原生候选中点选后才绑定。",
+        "data.topicKeywords": "独立有序纯关键词数组；旧记录为[]，不是平台topicId或绑定结果。",
+        "data.topicKeywords[]": "单个关键词；逐条复制只含关键词，不带#。"
       }
     },
     "publication.import": {
@@ -13741,7 +13774,7 @@
       "permissionRule": "@ss.hasPermi('knowledge:publication:import')",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。",
+        "limits": "输入长度、资产状态和关联闭包由服务端校验；保存可缺项，发售不得有阻断。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "登记类键按账号作用域保存；状态/发售按本资料操作键及完整请求核对，改参冲突。SALE继续批准另验证原操作者身份。",
         "concurrency": "写入校验 rowVersion；自检及发售另核对 contentVersion、题目批准前/后版本与依赖摘要。公开读取逐请求验证当前版本。",
         "partialSuccess": "SALE 全部题目有效才成功；独立批准不能用数据库事务回滚文件账册，局部批准后资料仍准备中。链接生成单独回执，不冒充发售或生成成功。",
@@ -13858,7 +13891,11 @@
               "items": [],
               "missingItems": []
             },
-            "deliveryMode": "PUBLIC_PAGE"
+            "deliveryMode": "PUBLIC_PAGE",
+            "topicKeywords": [
+              "科学课件",
+              "课堂互动"
+            ]
           },
           "imported": true,
           "existing": false,
@@ -13888,7 +13925,11 @@
           "products": [],
           "referenceSources": [],
           "images": [],
-          "baiduShares": []
+          "baiduShares": [],
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "parameterDescriptions": {
@@ -14109,7 +14150,11 @@
         "data.existing": "是否命中既有 originSystem+originRecordKey。",
         "data.operation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
         "data.publication.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
-        "data.publication.latestOperation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。"
+        "data.publication.latestOperation.deliveryMode": "交付模式：PUBLIC_PAGE为受控网页；OSS_DOWNLOAD为离线ZIP下载。本期配置OSS_DOWNLOAD，不返回公网shareUrl或缓存OSS签名。",
+        "publication.topicKeywords": "可选有序纯关键词数组，最多20项/每项80字符；不含#、首尾空白、换行、空项或重复；迁入省略/null为空，不拼入正文。",
+        "publication.topicKeywords[]": "单个纯关键词候选，复制不含#。",
+        "data.publication.topicKeywords": "独立有序纯关键词数组；旧记录[]，不是平台topicId或绑定结果。",
+        "data.publication.topicKeywords[]": "单个纯关键词候选。"
       }
     },
     "publication.operationByKey": {
@@ -16185,7 +16230,7 @@
       "permissionRule": "anonymous",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。",
+        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。 话题最多20条、每条80字符为本工程保护，不是平台限制；关键词与正文独立，不自动绑定平台话题。",
         "idempotency": "只读可重复调用。",
         "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。 撤回或版本失效停止重新签发；已签预览最长600秒内可继续取用，不追溯撤回已下载字节。",
         "partialSuccess": "只读不改变状态；分享资产逐请求校验，不通过时不返回对象内容。",
@@ -16271,7 +16316,11 @@
             "sourceCount": 1,
             "kpCount": 1,
             "outlineCount": 1
-          }
+          },
+          "topicKeywords": [
+            "科学课件",
+            "课堂互动"
+          ]
         }
       },
       "failureExample": {
@@ -16328,7 +16377,9 @@
         "data.images[].contentUrl": "逐请求门禁的图片内容地址，不返回永久 OSS 地址。",
         "data.products[].contentUrl": "既有原件的受控下载地址；逐请求检查版本/发售/闭包，关闭公开成品下载时不提供。",
         "data.images[].previewUrl": "经当前分享/版本/资产核验后签发的OSS图片压缩HTTPS URL；600秒有效，不持久化签名。旧客户端可忽略，非支持格式可为null。",
-        "data.images[].previewExpiresInSeconds": "压缩预览签名剩余有效期秒数，当前600；无预览时null。"
+        "data.images[].previewExpiresInSeconds": "压缩预览签名剩余有效期秒数，当前600；无预览时null。",
+        "data.topicKeywords": "独立有序纯关键词数组；旧记录为[]，不是平台topicId或绑定结果。",
+        "data.topicKeywords[]": "单个关键词；逐条复制只含关键词，不带#。"
       }
     },
     "publication.publicMaterials": {

@@ -175,7 +175,7 @@ public class PublicationPublicService {
         List<PublicShare> baidu = input.baiduShares.stream().map(s -> new PublicShare(s.shareUrl, s.extractionCode,
                 s.files.stream().map(f -> new PublicFile(id(f.productId), f.remoteFileName)).toList())).toList();
         return new PublicPublication(row.shareCode, id(row.contentVersion), row.title, "ON_SALE", row.postTitle, PublicationCopyText.body(row.postBody),
-                row.listingDescription, images, products, baidu, counts(row));
+                row.listingDescription, images, products, baidu, counts(row), input.topicKeywords);
     }
     private RelationCounts counts(Publication row) {
         long[] counts = new long[5]; String[] types = {"PRODUCT", "QUESTION", "SOURCE", "KP", "OUTLINE"};

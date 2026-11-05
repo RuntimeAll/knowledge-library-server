@@ -39,8 +39,12 @@ class PublicationMapperIntegrationTest {
             PublicationMapper mapper = session.getMapper(PublicationMapper.class);
             String name = "publication-test-" + UUID.randomUUID();
             Publication first = publication(name), second = publication(name + "-2");
+            first.topicKeywordsJson = "[\"科学课件\",\"课堂互动\"]";
             mapper.insertPublication(first); mapper.insertPublication(second);
             assertEquals("PREPARING", mapper.get(first.id).status);
+            assertArrayEquals(new String[]{"科学课件", "课堂互动"}, new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(mapper.get(first.id).topicKeywordsJson, String[].class));
+            assertNull(mapper.get(second.id).topicKeywordsJson, "legacy rows may keep SQL NULL");
             assertEquals(first.id, mapper.lock(first.id).id);
             ListQuery query = new ListQuery(); query.keyword = name; query.pageSize = 1;
             assertEquals(2, mapper.count(query)); assertEquals(1, mapper.list(query).size());
@@ -77,6 +81,11 @@ class PublicationMapperIntegrationTest {
             query.pageSize = 2;
             var summary = mapper.list(query).stream().filter(item -> item.id.equals(first.id)).findFirst().orElseThrow();
             assertEquals(mapper.get(first.id).shareContentType, summary.shareContentType);
+            assertArrayEquals(new String[]{"科学课件", "课堂互动"}, new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(summary.topicKeywordsJson, String[].class));
+            first.rowVersion = mapper.get(first.id).rowVersion; first.topicKeywordsJson = "[]";
+            assertEquals(1, mapper.updatePublication(first));
+            assertEquals("[]", mapper.get(first.id).topicKeywordsJson);
             // Verify the real profile join, including its conservative fallback, inside this rollback-only fixture.
             try (var statement = session.getConnection().prepareStatement("UPDATE kb_product_profile SET resource_type = 'COURSEWARE' WHERE product_id = ?")) {
                 statement.setLong(1, productId);

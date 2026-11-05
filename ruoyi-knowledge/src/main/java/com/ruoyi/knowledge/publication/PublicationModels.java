@@ -1,6 +1,7 @@
 package com.ruoyi.knowledge.publication;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -36,6 +37,8 @@ public final class PublicationModels {
         @Size(max = 300) public String postTitle;
         @Size(max = 1000000) public String postBody;
         @Size(max = 1000000) public String listingDescription;
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        @Size(max = 20) public List<@NotBlank @Size(max = 80) String> topicKeywords;
         @Size(max = 500) public String remark;
         @NotNull @Valid public List<ProductInput> products;
         @NotNull @Valid public List<ReferenceInput> referenceSources;
@@ -106,6 +109,9 @@ public final class PublicationModels {
         public String shareUrl;
         @com.fasterxml.jackson.annotation.JsonIgnore public String shareCode;
         @com.fasterxml.jackson.annotation.JsonIgnore public String shareContentType;
+        @com.fasterxml.jackson.annotation.JsonIgnore public String topicKeywordsJson;
+        @JsonInclude(JsonInclude.Include.ALWAYS)
+        public List<String> getTopicKeywords() { return topicKeywords == null ? List.of() : topicKeywords; }
         public int productCount;
         public int imageCount;
         public int questionCount;
@@ -287,7 +293,18 @@ public final class PublicationModels {
     public record PublicShare(String shareUrl, String extractionCode, List<PublicFile> files) { }
     public record PublicPublication(String shareCode, String contentVersion, String title, String status,
             String postTitle, String postBody, String listingDescription, List<PublicImage> images,
-            List<PublicProduct> products, List<PublicShare> baiduShares, RelationCounts relationCounts) { }
+            List<PublicProduct> products, List<PublicShare> baiduShares, RelationCounts relationCounts,
+            List<String> topicKeywords) {
+        public PublicPublication {
+            topicKeywords = topicKeywords == null ? List.of() : List.copyOf(topicKeywords);
+        }
+        public PublicPublication(String shareCode, String contentVersion, String title, String status,
+                String postTitle, String postBody, String listingDescription, List<PublicImage> images,
+                List<PublicProduct> products, List<PublicShare> baiduShares, RelationCounts relationCounts) {
+            this(shareCode, contentVersion, title, status, postTitle, postBody, listingDescription,
+                    images, products, baiduShares, relationCounts, List.of());
+        }
+    }
     public record Materials(String kind, String contentVersion, Integer total, List<PublicImage> images, String text) { }
     public record ErrorDetail(String errorCode, boolean retryable, List<Issue> issues, OperationReceipt operation) { }
 }

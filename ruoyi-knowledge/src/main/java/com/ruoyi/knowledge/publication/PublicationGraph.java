@@ -38,6 +38,7 @@ public class PublicationGraph {
     }
     public Input read(Publication row) {
         Input out = support.json.convertValue(row, Input.class);
+        out.topicKeywords = PublicationTopics.read(row.topicKeywordsJson, support);
         List<PublicationQuestion> questions = mapper.questions(row.id);
         out.products = new ArrayList<>();
         for (PublicationProduct p : mapper.products(row.id)) {
@@ -71,6 +72,7 @@ public class PublicationGraph {
                 || input.images == null || input.referenceSources == null || input.baiduShares == null) {
             throw fail(400, "INVALID_REQUEST", "资料名称和全部关联数组必填");
         }
+        PublicationTopics.validate(input.topicKeywords);
         Set<Long> products = new HashSet<>(); Set<Integer> order = new HashSet<>();
         for (ProductInput p : input.products) {
             positive(p.productId); sequence(p.sortOrder, order);

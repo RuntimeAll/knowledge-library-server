@@ -54,6 +54,7 @@ public class PublicationService {
         List<Summary> items = mapper.list(query);
         for (Summary item : items) {
             item.deliveryMode = support.deliveryMode();
+            item.topicKeywords = PublicationTopics.read(item.topicKeywordsJson, support);
             if ("ON_SALE".equals(item.status) && "READY".equals(item.shareState) && item.shareCode != null && "text/html".equals(item.shareContentType)) { item.shareUrl = support.publicUrl(item.shareCode); }
         }
         return new Page<>(items, mapper.count(query));
@@ -63,7 +64,9 @@ public class PublicationService {
         return detailOf(row);
     }
     public Detail detailOf(Publication row) {
-        Detail out = support.json.convertValue(graph.read(row), Detail.class);
+        Input input = graph.read(row);
+        Detail out = support.json.convertValue(input, Detail.class);
+        out.topicKeywords = input.topicKeywords == null ? List.of() : input.topicKeywords;
         out.id = row.id; out.rowVersion = row.rowVersion; out.contentVersion = row.contentVersion;
         out.status = row.status; out.shareState = row.shareState; out.deliveryMode = support.deliveryMode();
         out.createTime = row.createTime; out.updateTime = row.updateTime;
@@ -139,6 +142,7 @@ public class PublicationService {
     }
     private Publication insert(Command command, boolean imported) {
         Publication row = support.stamp(new Publication()); apply(row, command.publication);
+        if (row.topicKeywordsJson == null) { row.topicKeywordsJson = "[]"; }
         row.status = "PREPARING"; row.contentVersion = 1L; row.shareState = "NOT_CREATED";
         if (imported) { row.originSystem = command.originSystem; row.originRecordKey = command.originRecordKey;
             row.legacySaleStatus = command.legacySaleStatus; row.legacySoldAt = command.legacySoldAt; }
@@ -148,19 +152,25 @@ public class PublicationService {
         key(command.operationKey);
         KbAgentSubmission prior = submissions.lock(support.actor(), action, PublicationSupport.digest(target + ":" + command.operationKey));
         if (prior == null) { return false; }
-        if (!Objects.equals(prior.getRequestHash(), support.hash(command))) { throw fail(409, "IDEMPOTENCY_CONFLICT", "同一操作键的输入已改变"); }
+        if (!Objects.equals(prior.getRequestHash(), registrationHash(action, command))) { throw fail(409, "IDEMPOTENCY_CONFLICT", "同一操作键的输入已改变"); }
         return prior.getResourceId() != null;
     }
     public Registration register(String action, String target, Command command, Supplier<Long> work) {
         key(command.operationKey);
         String actor = support.actor(); String key = PublicationSupport.digest(target + ":" + command.operationKey);
-        String hash = support.hash(command);
+        String hash = registrationHash(action, command);
         submissions.claim(actor, action, key, hash);
         KbAgentSubmission prior = submissions.lock(actor, action, key);
         if (!hash.equals(prior.getRequestHash())) { throw fail(409, "IDEMPOTENCY_CONFLICT", "同一操作键的输入已改变"); }
         if (prior.getResourceId() != null) { return new Registration(command.operationKey, true, id(prior.getResourceId())); }
         Long result = work.get(); submissions.complete(actor, action, key, result);
         return new Registration(command.operationKey, false, id(result));
+    }
+    private String registrationHash(String action, Command command) {
+        // Empty inputs keep historical snapshot hashes, but an explicit update clear is a distinct command.
+        boolean clearsTopics = "publicationUpdate".equals(action) && command.publication != null
+                && command.publication.topicKeywords != null && command.publication.topicKeywords.isEmpty();
+        return clearsTopics ? support.hash(List.of(command, "TOPIC_KEYWORDS_CLEAR")) : support.hash(command);
     }
     public OperationReceipt operation(Long publicationId, String key) {
         support.permission("query"); Publication row = require(publicationId); support.own(row);
@@ -270,8 +280,9 @@ public class PublicationService {
     public static void changed(int n) { if (n != 1) { throw fail(409, "VERSION_CONFLICT", "资料已变化，请重新读取"); } }
     public static void key(String key) { if (key == null || key.isBlank() || key.length() > 128) { throw fail(400, "INVALID_REQUEST", "有效操作键必填"); } }
     private static void requireInput(Command c) { if (c.publication == null) { throw fail(400, "INVALID_REQUEST", "发布资料必填"); } }
-    private static void apply(Publication row, Input input) {
+    private void apply(Publication row, Input input) {
         row.title = input.title; row.postTitle = input.postTitle; row.postBody = input.postBody;
         row.listingDescription = input.listingDescription; row.remark = input.remark;
+        if (input.topicKeywords != null) { row.topicKeywordsJson = support.encode(input.topicKeywords); }
     }
 }

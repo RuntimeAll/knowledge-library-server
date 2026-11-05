@@ -21,6 +21,7 @@ public final class PublicationRows {
         public String postTitle;
         public String postBody;
         public String listingDescription;
+        public String topicKeywordsJson;
         public String status;
         @JsonFormat(shape = JsonFormat.Shape.STRING)
         public Long contentVersion;
