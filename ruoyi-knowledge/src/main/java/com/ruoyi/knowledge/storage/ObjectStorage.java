@@ -10,5 +10,7 @@ public interface ObjectStorage {
     PutResult put(String bucket, String objectKey, byte[] bytes, String contentType);
     InputStream open(String bucket, String objectKey, String versionId);
     String previewUrl(String bucket, String objectKey, String versionId, int validSeconds);
+    /** Fixed image transformation for display; never replaces the stored original. */
+    String imagePreviewUrl(String bucket, String objectKey, String versionId, int validSeconds);
     void delete(String bucket, String objectKey, String versionId);
 }

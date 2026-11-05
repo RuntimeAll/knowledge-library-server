@@ -122,6 +122,71 @@ class KbAssetServiceTest {
         verify(storage, times(1)).previewUrl(anyString(), anyString(), anyString(), anyInt());
     }
 
+    @Test void publicationImagePreviewSignsCompressedDisplayWithoutReadingOrOverwritingOriginal() {
+        KbAsset image = asset(new byte[]{1, 2}, "READY"); image.setStorageProvider("ALIYUN_OSS");
+        image.setPurpose("IMPORT_RESOURCE"); image.setContentType("image/png"); image.setOssVersionId("version-7");
+        when(mapper.selectByIdForUpdate(8L)).thenReturn(image);
+        when(storage.imagePreviewUrl("fixture-bucket", image.getObjectKey(), "version-7", 600))
+                .thenReturn("https://fixture-bucket.oss.invalid/preview");
+        IKbAssetService.Preview result = service.publicationImagePreview(8L);
+        assertEquals(600, result.expiresInSeconds()); assertEquals("image/webp", result.contentType());
+        assertEquals("https://fixture-bucket.oss.invalid/preview", result.url());
+        assertEquals("image/png", image.getContentType()); assertEquals(2L, image.getFileSize());
+        assertEquals("version-7", image.getOssVersionId());
+        verify(storage).imagePreviewUrl("fixture-bucket", image.getObjectKey(), "version-7", 600);
+        verifyNoMoreInteractions(storage);
+        verify(mapper, never()).insert(any()); verify(mapper, never()).updateState(any());
+    }
+
+    @Test void publicationImagePreviewRejectsUnreadyForeignAndNonRasterInputsBeforeSigning() {
+        KbAsset image = asset(new byte[]{1}, "READY"); image.setStorageProvider("ALIYUN_OSS"); image.setContentType("image/png");
+        when(mapper.selectByIdForUpdate(8L)).thenReturn(image);
+        image.setStatus("DELETED"); assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setStatus("READY");
+        for (String type : java.util.List.of("image/svg+xml", "application/pdf", "text/html")) {
+            image.setContentType(type); assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        }
+        image.setContentType(null); assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setContentType("image/png"); image.setBucketName("foreign-bucket");
+        assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setBucketName("fixture-bucket"); image.setObjectKey("another-project/image.png");
+        assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setObjectKey(null); assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setObjectKey("knowledge-library/image.png"); image.setStorageProvider("FOREIGN");
+        assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setStorageProvider("ALIYUN_OSS"); image.setFileSize(20L * 1024 * 1024 + 1);
+        assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        image.setFileSize(null); assertThrows(ServiceException.class, () -> service.publicationImagePreview(8L));
+        verifyNoInteractions(storage);
+    }
+
+    @Test void sixPublicationPreviewsUseOneBatchQueryAndEmptyInputUsesNoQuery() {
+        assertTrue(service.publicationImagePreviews(java.util.List.of()).isEmpty());
+        verifyNoInteractions(mapper, storage);
+        java.util.List<Long> ids = java.util.List.of(1L, 2L, 3L, 4L, 5L, 6L);
+        java.util.List<KbAsset> images = ids.stream().map(id -> {
+            KbAsset image = asset(new byte[]{1}, "READY"); image.setAssetId(id);
+            image.setStorageProvider("ALIYUN_OSS"); image.setContentType("image/png"); image.setOssVersionId("version-7");
+            image.setObjectKey("knowledge-library/image-" + id + ".png"); return image;
+        }).toList();
+        when(mapper.selectByIds(ids)).thenReturn(images);
+        when(storage.imagePreviewUrl(anyString(), anyString(), eq("version-7"), eq(600)))
+                .thenReturn("https://fixture-bucket.oss.invalid/preview");
+        java.util.Map<Long, IKbAssetService.Preview> result = service.publicationImagePreviews(ids);
+        assertEquals(ids, java.util.List.copyOf(result.keySet()));
+        assertTrue(result.values().stream().allMatch(preview -> "image/webp".equals(preview.contentType())));
+        verify(mapper, times(1)).selectByIds(ids); verify(mapper, never()).selectByIdForUpdate(anyLong());
+        verify(storage, times(6)).imagePreviewUrl(anyString(), anyString(), eq("version-7"), eq(600));
+    }
+
+    @Test void batchPreviewMissingOrForeignAssetPreventsAllSigning() {
+        KbAsset image = asset(new byte[]{1}, "READY"); image.setStorageProvider("ALIYUN_OSS"); image.setContentType("image/png");
+        when(mapper.selectByIds(java.util.List.of(8L, 9L))).thenReturn(java.util.List.of(image));
+        assertThrows(ServiceException.class, () -> service.publicationImagePreviews(java.util.List.of(8L, 9L)));
+        assertThrows(ServiceException.class, () -> service.publicationImagePreviews(java.util.Arrays.asList(8L, null)));
+        verifyNoInteractions(storage);
+    }
+
     private KbAsset asset(byte[] bytes, String status) {
         KbAsset asset = new KbAsset();
         asset.setAssetId(8L);

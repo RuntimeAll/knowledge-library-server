@@ -16175,7 +16175,7 @@
       "group": "product",
       "action": "READ",
       "summary": "读取匿名分享资料",
-      "responsibility": "无登录要求；逐请求核验当前已发售、内容版本及关联依赖，仅展示当前分享闭包内内容。",
+      "responsibility": "无登录要求；逐请求核验当前已发售、内容版本及关联依赖，仅展示当前分享闭包内内容。 卡片使用OSS按固定尺寸/质量生成的WebP短期预览，不预取原图；保存图片仍经受控原件接口。成品交付默认仅百度网盘。",
       "prdRefs": [
         "PRD-012"
       ],
@@ -16187,7 +16187,7 @@
         "pagination": "不适用；单资料或单操作。",
         "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。",
         "idempotency": "只读可重复调用。",
-        "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。",
+        "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。 撤回或版本失效停止重新签发；已签预览最长600秒内可继续取用，不追溯撤回已下载字节。",
         "partialSuccess": "只读不改变状态；分享资产逐请求校验，不通过时不返回对象内容。",
         "recovery": "访问有效分享链接；临时依赖故障稍后重试同一地址，不通过后台或 OSS 地址绕过门禁。"
       },
@@ -16237,20 +16237,12 @@
               "width": 1240,
               "height": 1754,
               "byteSize": "123456",
-              "contentUrl": "/public/publications/0123456789abcdef0123456789abcdef/assets/900101/content?contentVersion=1"
+              "contentUrl": "/public/publications/0123456789abcdef0123456789abcdef/assets/900101/content?contentVersion=1",
+              "previewUrl": "https://fixture-bucket.oss-cn-hangzhou.aliyuncs.com/knowledge-library/preview-fixture?x-oss-process=image%2Fresize%2Cw_720%2Fquality%2Cq_75%2Fformat%2Cwebp",
+              "previewExpiresInSeconds": 600
             }
           ],
-          "products": [
-            {
-              "productId": "900201",
-              "title": "期中基础练习学生卷",
-              "versionLabel": "第1版",
-              "assetId": "900102",
-              "fileName": "学生卷.pdf",
-              "mimeType": "application/pdf",
-              "contentUrl": "/public/publications/0123456789abcdef0123456789abcdef/assets/900102/content?contentVersion=1"
-            }
-          ],
+          "products": [],
           "baiduShares": [
             {
               "shareUrl": "https://pan.baidu.com/s/docs-example",
@@ -16287,7 +16279,7 @@
         "data.postTitle": "手机端可复制标题，最长 300 字符。",
         "data.postBody": "手机端正文；保留全文，最长 1000000 字符。",
         "data.listingDescription": "商品上架描述；保留全文，最长 1000000 字符。",
-        "data.products": "关联既有成品与题单；数组必须显式提交，空数组可保存草稿但不能发售。",
+        "data.products": "公开成品下载槽位；默认关闭并返回空数组，交付使用百度网盘；知识库内部关系保持。",
         "data.images": "已由 Agent 制作并入库的发布图片，顺序由 sortOrder 确定。",
         "data.baiduShares": "Agent 已完成上传的百度网盘分享及逐文件映射；本接口不上传网盘。",
         "data.products[].productId": "成品 ID 字符串。",
@@ -16324,14 +16316,16 @@
         "data.relationCounts": "本次分享关联闭包内各实体数量。",
         "data.shareCode": "本次成功发售生成的高熵分享标识。",
         "data.images[].contentUrl": "逐请求门禁的图片内容地址，不返回永久 OSS 地址。",
-        "data.products[].contentUrl": "逐请求门禁的成品文件地址。"
+        "data.products[].contentUrl": "仅显式启用公开成品下载时才提供；默认不签发。",
+        "data.images[].previewUrl": "经当前分享/版本/资产核验后签发的OSS图片压缩HTTPS URL；600秒有效，不持久化签名。旧客户端可忽略，非支持格式可为null。",
+        "data.images[].previewExpiresInSeconds": "压缩预览签名剩余有效期秒数，当前600；无预览时null。"
       }
     },
     "publication.publicMaterials": {
       "group": "product",
       "action": "READ",
       "summary": "读取可复制文案或图片列表",
-      "responsibility": "返回完整文案或按顺序排列的受控图片 URL；前端压缩展示不改变全文复制。",
+      "responsibility": "返回完整文案或按顺序排列的受控图片 URL；前端压缩展示不改变全文复制。 卡片使用OSS按固定尺寸/质量生成的WebP短期预览，不预取原图；保存图片仍经受控原件接口。成品交付默认仅百度网盘。",
       "prdRefs": [
         "PRD-012"
       ],
@@ -16343,7 +16337,7 @@
         "pagination": "不适用；单资料或单操作。",
         "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。",
         "idempotency": "只读可重复调用。",
-        "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。",
+        "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。 撤回或版本失效停止重新签发；已签预览最长600秒内可继续取用，不追溯撤回已下载字节。",
         "partialSuccess": "只读不改变状态；分享资产逐请求校验，不通过时不返回对象内容。",
         "recovery": "访问有效分享链接；临时依赖故障稍后重试同一地址，不通过后台或 OSS 地址绕过门禁。"
       },
@@ -16406,7 +16400,9 @@
         "data.kind": "返回的物料类型。",
         "data.total": "所选图片数量。",
         "data.text": "按 scope 返回完整可复制文案；展示压缩不截断复制结果。",
-        "data.images[].contentUrl": "逐请求门禁的图片内容地址，不返回永久 OSS 地址。"
+        "data.images[].contentUrl": "逐请求门禁的图片内容地址，不返回永久 OSS 地址。",
+        "data.images[].previewUrl": "经当前分享/版本/资产核验后签发的OSS图片压缩HTTPS URL；600秒有效，不持久化签名。旧客户端可忽略，非支持格式可为null。",
+        "data.images[].previewExpiresInSeconds": "压缩预览签名剩余有效期秒数，当前600；无预览时null。"
       }
     },
     "publication.publicRelations": {
@@ -16423,7 +16419,7 @@
       "permissionRule": "anonymous",
       "invocationRules": {
         "pagination": "服务端分页，默认20、最大100；固定排序，越界返回空页。",
-        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。",
+        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。 默认关闭公开成品原件下载；关系内成品链接不提供，成品资产请求404，图片仍受原闭包及版本校验。",
         "idempotency": "只读可重复调用。",
         "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。",
         "partialSuccess": "只读不改变状态；分享资产逐请求校验，不通过时不返回对象内容。",
@@ -16507,7 +16503,7 @@
       "permissionRule": "anonymous",
       "invocationRules": {
         "pagination": "不适用；单资料或单操作。",
-        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。",
+        "limits": "仅当前已发售且分享就绪的内容；资产与关联必须在本分享闭包内，门禁失败返回 HTTP 404/503，参数错误返回 HTTP 400。 OSS_DOWNLOAD模式拒绝这些公开入口；离线文件下载不经过实时读取代理。 默认关闭公开成品原件下载；关系内成品链接不提供，成品资产请求404，图片仍受原闭包及版本校验。",
         "idempotency": "只读可重复调用。",
         "concurrency": "逐请求校验当前资料、内容版本和发售依赖；修改、撤回、删除立即使旧地址不可用。",
         "partialSuccess": "只读不改变状态；分享资产逐请求校验，不通过时不返回对象内容。",

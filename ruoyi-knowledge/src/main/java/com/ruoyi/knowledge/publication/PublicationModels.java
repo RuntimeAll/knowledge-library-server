@@ -276,7 +276,11 @@ public final class PublicationModels {
     public record RelationRef(String objectType, String objectId, String name, String rowVersion, List<String> relationKinds) { }
     public record RelationSummary(RelationCounts counts, List<RelationRef> items, List<Issue> missingItems) { }
     public record PublicImage(String assetId, int seq, String caption, String mimeType,
-            Integer width, Integer height, String byteSize, String contentUrl) { }
+            Integer width, Integer height, String byteSize, String contentUrl, String previewUrl, Integer previewExpiresInSeconds) {
+        public PublicImage(String assetId, int seq, String caption, String mimeType, Integer width, Integer height, String byteSize, String contentUrl) {
+            this(assetId, seq, caption, mimeType, width, height, byteSize, contentUrl, null, null);
+        }
+    }
     public record PublicProduct(String productId, String title, String versionLabel, String assetId,
             String fileName, String mimeType, String contentUrl) { }
     public record PublicFile(String productId, String remoteFileName) { }

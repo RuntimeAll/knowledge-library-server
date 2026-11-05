@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class AliyunObjectStorage implements ObjectStorage {
+    static final String PUBLICATION_IMAGE_PROCESS = "image/resize,m_lfit,w_720,h_1280,limit_1/quality,q_75/format,webp";
     private final KbStorageProperties properties;
     private volatile OSS client;
 
@@ -82,6 +83,16 @@ public class AliyunObjectStorage implements ObjectStorage {
         GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
         request.setExpiration(new Date(System.currentTimeMillis() + validSeconds * 1000L));
         if (!blank(versionId)) { request.addQueryParameter("versionId", versionId); }
+        return client().generatePresignedUrl(request).toExternalForm();
+    }
+
+    @Override
+    public String imagePreviewUrl(String bucket, String objectKey, String versionId, int validSeconds) {
+        GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket, objectKey, HttpMethod.GET);
+        request.setExpiration(new Date(System.currentTimeMillis() + validSeconds * 1000L));
+        if (!blank(versionId)) { request.addQueryParameter("versionId", versionId); }
+        // Processing must be included before signing a private object's request.
+        request.setProcess(PUBLICATION_IMAGE_PROCESS);
         return client().generatePresignedUrl(request).toExternalForm();
     }
 

@@ -71,7 +71,7 @@ public class PublicationPublicController {
     public void page(@PathVariable String shareCode, HttpServletResponse response) throws Exception {
         KbAsset page = publications.page(shareCode); noCache(response);
         response.setContentType("text/html;charset=UTF-8"); response.setHeader("X-Content-Type-Options", "nosniff");
-        response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+        response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https://*.aliyuncs.com; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
         response.setContentLengthLong(page.getFileSize());
         try (InputStream input = assets.openContent(page.getAssetId())) { input.transferTo(response.getOutputStream()); }
     }

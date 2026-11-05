@@ -8,7 +8,10 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import com.ruoyi.common.exception.ServiceException;
@@ -192,6 +195,50 @@ public class KbAssetServiceImpl implements IKbAssetService {
         }
         return new Preview(storage.previewUrl(asset.getBucketName(), asset.getObjectKey(), asset.getOssVersionId(), 600),
                 600, asset.getContentType());
+    }
+
+    @Override
+    public Preview publicationImagePreview(Long assetId) {
+        KbAsset asset = requireReady(assetId);
+        validatePublicationImage(asset);
+        return signPublicationImage(asset);
+    }
+
+    @Override
+    public Map<Long, Preview> publicationImagePreviews(List<Long> assetIds) {
+        if (assetIds == null || assetIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new ServiceException("发布图片编号无效", 400);
+        }
+        List<Long> ids = assetIds.stream().distinct().toList();
+        if (ids.isEmpty()) { return Map.of(); }
+        Map<Long, KbAsset> rows = new LinkedHashMap<>();
+        for (KbAsset asset : mapper.selectByIds(ids)) { rows.put(asset.getAssetId(), asset); }
+        // Validate the complete requested set before creating any signed link.
+        for (Long id : ids) { validatePublicationImage(rows.get(id)); }
+        Map<Long, Preview> previews = new LinkedHashMap<>();
+        for (Long id : ids) { previews.put(id, signPublicationImage(rows.get(id))); }
+        return java.util.Collections.unmodifiableMap(previews);
+    }
+
+    private void validatePublicationImage(KbAsset asset) {
+        if (asset == null || !"READY".equals(asset.getStatus())) {
+            throw new ServiceException("发布图片不存在或尚未就绪", 400);
+        }
+        if (!"ALIYUN_OSS".equals(asset.getStorageProvider())
+                || asset.getContentType() == null
+                || !Set.of("image/png", "image/jpeg", "image/gif", "image/webp").contains(asset.getContentType())
+                || properties.getBucket() == null || !properties.getBucket().equals(asset.getBucketName())
+                || asset.getObjectKey() == null || !asset.getObjectKey().startsWith(normalizedPrefix() + "/")) {
+            throw new ServiceException("此资产不是知识库可预览的发布图片", 400);
+        }
+        if (asset.getFileSize() == null || asset.getFileSize() <= 0 || asset.getFileSize() > 20L * 1024 * 1024) {
+            throw new ServiceException("OSS图片预览仅支持20MiB以内的原图，请保存原图查看", 400);
+        }
+    }
+
+    private Preview signPublicationImage(KbAsset asset) {
+        return new Preview(storage.imagePreviewUrl(asset.getBucketName(), asset.getObjectKey(), asset.getOssVersionId(), 600),
+                600, "image/webp");
     }
 
     @Override

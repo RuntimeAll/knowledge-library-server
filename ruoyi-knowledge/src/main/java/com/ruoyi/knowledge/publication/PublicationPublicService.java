@@ -92,15 +92,17 @@ public class PublicationPublicService {
                     }
                 }
             }
-            Set<Long> allowed = Set.copyOf(service.mapper.allowedAssets(scope(row)));
+            Set<Long> hiddenProducts = hiddenProductAssets(row);
+            Set<Long> allowed = service.mapper.allowedAssets(scope(row)).stream().filter(id -> !hiddenProducts.contains(id))
+                    .collect(Collectors.toUnmodifiableSet());
             for (Relation item : items) {
                 item.links = links.stream().filter(l -> (l.fromType().equals(item.objectType) && l.fromId().equals(id(item.id)))
                         || (l.toType().equals(item.objectType) && l.toId().equals(id(item.id)))).toList();
                 item.relationKinds = item.links.stream().map(RelationLink::type).distinct().toList();
                 item.stemHtml = sanitize(item.stemHtml, row, allowed); item.answerHtml = sanitize(item.answerHtml, row, allowed);
-                item.files = files.stream().filter(f -> f.objectId.equals(item.id) && f.objectType.equals(item.objectType)).toList();
+                item.files = files.stream().filter(f -> f.objectId.equals(item.id) && f.objectType.equals(item.objectType) && !hiddenProducts.contains(f.assetId)).toList();
                 item.nodes = nodes.stream().filter(n -> "KP".equals(item.objectType) ? n.kpId.equals(item.id) : n.outlineId.equals(item.id)).toList();
-                item.contentUrl = item.assetId == null ? null : assetUrl(row, item.assetId);
+                item.contentUrl = item.assetId == null || hiddenProducts.contains(item.assetId) ? null : assetUrl(row, item.assetId);
             }
             return new Page<>(items, service.mapper.relationCount(query));
         });
@@ -108,7 +110,7 @@ public class PublicationPublicService {
     public KbAsset asset(String code, Long assetId, Long contentVersion) {
         return service.support.gated(() -> {
             Publication row = require(code);
-            if (!Objects.equals(row.contentVersion, contentVersion) || !service.mapper.allowedAssets(scope(row)).contains(assetId)) { throw unavailable(); }
+            if (!Objects.equals(row.contentVersion, contentVersion) || hiddenProductAssets(row).contains(assetId) || !service.mapper.allowedAssets(scope(row)).contains(assetId)) { throw unavailable(); }
             return assets.requireReady(assetId);
         });
     }
@@ -154,13 +156,21 @@ public class PublicationPublicService {
         List<Long> imageIds = input.images.stream().map(i -> i.assetId).toList();
         Map<Long, KbAsset> metadata = imageIds.isEmpty() ? Map.of() : assetMapper.selectByIds(imageIds).stream()
                 .collect(Collectors.toMap(KbAsset::getAssetId, Function.identity()));
+        List<Long> previewIds = imageIds.stream().filter(id -> {
+            KbAsset a = metadata.get(id);
+            return a != null && a.getFileSize() != null && a.getFileSize() <= 20L * 1024 * 1024
+                    && Set.of("image/png", "image/jpeg", "image/webp", "image/gif").contains(a.getContentType());
+        }).toList();
+        Map<Long, IKbAssetService.Preview> previews = previewIds.isEmpty() ? Map.of() : assets.publicationImagePreviews(previewIds);
         List<PublicImage> images = input.images.stream().map(i -> {
             KbAsset a = metadata.get(i.assetId);
             if (a == null || !"READY".equals(a.getStatus())) { throw unavailable(); }
-            return new PublicImage(id(i.assetId), i.sortOrder, i.caption, a.getContentType(), null, null, id(a.getFileSize()), assetUrl(row, i.assetId));
+            IKbAssetService.Preview preview = previews.get(i.assetId);
+            return new PublicImage(id(i.assetId), i.sortOrder, i.caption, a.getContentType(), null, null, id(a.getFileSize()), assetUrl(row, i.assetId),
+                    preview == null ? null : preview.url(), preview == null ? null : preview.expiresInSeconds());
         }).toList();
         List<Long> productIds = input.products.stream().map(p -> p.productId).toList();
-        List<PublicProduct> products = productIds.isEmpty() ? List.of() : service.mapper.productFacts(productIds).stream()
+        List<PublicProduct> products = productIds.isEmpty() || !service.support.productDownloadsEnabled() ? List.of() : service.mapper.productFacts(productIds).stream()
                 .map(p -> new PublicProduct(id(p.id), p.title, "第" + p.versionNo + "版", id(p.assetId), p.fileName, p.mimeType, assetUrl(row, p.assetId))).toList();
         List<PublicShare> baidu = input.baiduShares.stream().map(s -> new PublicShare(s.shareUrl, s.extractionCode,
                 s.files.stream().map(f -> new PublicFile(id(f.productId), f.remoteFileName)).toList())).toList();
@@ -194,6 +204,12 @@ public class PublicationPublicService {
         return Jsoup.clean(document.body().html(), "", Safelist.relaxed().removeTags("a").removeAttributes(":all", "style").preserveRelativeLinks(true).removeProtocols("img", "src", "http", "https")
                 .addTags("math", "mi", "mo", "mn", "mrow", "mfrac", "msup", "msub").addAttributes("img", "src", "alt"),
                 new Document.OutputSettings().prettyPrint(false));
+    }
+    private Set<Long> hiddenProductAssets(Publication row) {
+        if (service.support.productDownloadsEnabled()) { return Set.of(); }
+        List<Long> ids = service.mapper.products(row.id).stream().map(p -> p.productId).toList();
+        return ids.isEmpty() ? Set.of() : service.mapper.productFacts(ids).stream().map(p -> p.assetId)
+                .filter(Objects::nonNull).collect(Collectors.toUnmodifiableSet());
     }
     private static String assetUrl(Publication row, Long assetId) {
         return "/public/publications/" + row.shareCode + "/assets/" + assetId + "/content?contentVersion=" + row.contentVersion;

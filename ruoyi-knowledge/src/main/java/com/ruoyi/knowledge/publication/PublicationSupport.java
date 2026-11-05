@@ -83,6 +83,7 @@ public class PublicationSupport {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
+    public boolean productDownloadsEnabled() { return properties.isProductDownloadsEnabled(); }
     public String deliveryMode() { return properties.getDeliveryMode().name(); }
     public String publicUrl(String code) {
         if (properties.getDeliveryMode() != PublicationProperties.DeliveryMode.PUBLIC_PAGE) { return null; }
