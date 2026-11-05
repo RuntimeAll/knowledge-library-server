@@ -11,7 +11,7 @@ public class PublicationProperties {
     public DeliveryMode getDeliveryMode() { return deliveryMode; }
     public void setDeliveryMode(DeliveryMode value) { deliveryMode = java.util.Objects.requireNonNull(value); }
     private boolean enabled;
-    private boolean productDownloadsEnabled;
+    private boolean productDownloadsEnabled = true;
     public boolean isProductDownloadsEnabled() { return productDownloadsEnabled; }
     public void setProductDownloadsEnabled(boolean value) { productDownloadsEnabled = value; }
     private String publicBaseUrl;

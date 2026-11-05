@@ -35,8 +35,8 @@ class PublicationPreviewTest {
         assertThrows(PublicationException.class, () -> f.api.get(f.row.shareCode));
         verifyNoInteractions(f.assets);
     }
-    @Test void publicProductDeliveryIsBlankAndDirectProductBytesAreClosedByDefault() {
-        Fixture f = new Fixture();
+    @Test void publicProductDeliveryCanBeDisabledWithoutDeletingArchivedBytes() {
+        Fixture f = new Fixture(); f.properties.setProductDownloadsEnabled(false);
         var product = new PublicationProduct(); product.productId = 7L;
         when(f.mapper.products(1L)).thenReturn(List.of(product));
         var fact = new ProductFact(); fact.id = 7L; fact.assetId = 99L;
